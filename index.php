@@ -642,7 +642,36 @@ function display_value($r, $col) {
   if (function_exists('posix_geteuid')) $diag[] = '実行中UID: ' . posix_geteuid();
   echo '<span class="muted">診断: ' . h(implode(' / ', $diag)) . '</span><br>';
   ?>
-  <span class="muted">フォルダの所有者と実行中UIDが違う場合は、コンテナの環境変数 PUID / PGID に所有者のUID/GID（例：1026 / 100）を指定すると読めるようになります。</span></div>
+  <span class="muted">フォルダの所有者と実行中UIDが違う場合は、コンテナの環境変数 PUID / PGID に所有者のUID/GID（例：1026 / 100）を指定すると読めるようになります。</span>
+  <?php
+  // ===== 権限チェック（実際に読めるか・書けるかをその場でテストする） =====
+  $envPuid = getenv('PUID'); $envPgid = getenv('PGID');
+  $runName = '?'; $runUid = '?'; $runGid = '?';
+  if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
+      $pw = @posix_getpwuid(posix_geteuid());
+      if ($pw) { $runName = $pw['name']; $runUid = $pw['uid']; $runGid = $pw['gid']; }
+  }
+  $workList = @scandir($BASE_DIR);
+  $workReadable = ($workList !== false);
+  $idxWritable = false; $idxNote = '';
+  if (is_dir($INDEX_DIR)) {
+      $tmpf = @tempnam($INDEX_DIR, '.permtest_');
+      if ($tmpf !== false) { $idxWritable = true; @unlink($tmpf); }
+      else $idxNote = '（tempnam失敗）';
+  }
+  $okNg = function ($b) { return $b ? '<b style="color:#2e7d32">OK</b>' : '<b style="color:#c62828">NG</b>'; };
+  echo '<div style="margin-top:8px"><b>権限チェック</b><ul style="margin:4px 0 0 18px;padding:0">';
+  echo '<li>環境変数 PUID: ' . ($envPuid === false || $envPuid === '' ? '（未設定）' : h((string)$envPuid)) . ' / PGID: ' . ($envPgid === false || $envPgid === '' ? '（未設定）' : h((string)$envPgid)) . '</li>';
+  echo '<li>実行ユーザー: ' . h($runName) . '（UID: ' . h((string)$runUid) . ' / GID: ' . h((string)$runGid) . '）</li>';
+  echo '<li>検索フォルダ ' . h($BASE_DIR) . ' の読み取り: ' . $okNg($workReadable) . ($workReadable ? '（中身 ' . count($workList) . ' 件）' : '') . '</li>';
+  echo '<li>索引フォルダ ' . h($INDEX_DIR) . ' の書き込み: ' . $okNg($idxWritable) . h($idxNote) . '</li>';
+  echo '</ul>';
+  if ($envPuid !== false && $envPuid !== '' && (string)$runUid !== (string)$envPuid) {
+      echo '<span class="muted">※ PUID は指定されていますが実行UIDに反映されていません。コンテナが再作成されていないか、古いイメージの可能性があります（イメージの更新＋作り直しをしてください）。</span><br>';
+  }
+  echo '</div>';
+  ?>
+  </div>
   <?php endif; ?>
   <?php if (isset($_GET['saved'])): ?><div class="stats">設定を保存しました（索引は次回検索時に自動で作り直されます）。</div><?php endif; ?>
   <?php if ($displayTrunc): ?><div class="warn">表示列は最大10個までです。先頭の10個を適用しています。</div><?php endif; ?>

@@ -68,6 +68,8 @@ function default_settings() {
         'sheet_name'   => '',
         'search_cols'  => '',      // 例 "N" "A-Z" "B,N,P"（空欄=見出し自動判定）
         'display_cols' => '',      // 例 "F,N,C,L,O"（最大10、空欄=標準表示）
+        'bg_mode'      => 'on',  // on / off / light / black
+        'bg_nodes'     => 'mid', // low=44 / mid=88 / high=160
     );
 }
 function load_settings($file) {
@@ -91,7 +93,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $SETTINGS['sheet_name'] = trim((string)$_POST['sheet_name']);
         $SETTINGS['search_cols'] = trim((string)$_POST['search_cols']);
         $SETTINGS['display_cols'] = trim((string)$_POST['display_cols']);
+        $SETTINGS['bg_mode'] = (string)($_POST['bg_mode'] ?? 'on');
+        $SETTINGS['bg_nodes'] = (string)($_POST['bg_nodes'] ?? 'mid');
         if (!in_array($SETTINGS['sheet_mode'], array('index', 'name', 'all'), true)) $SETTINGS['sheet_mode'] = 'index';
+        if (!in_array($SETTINGS['bg_mode'], array('on', 'off', 'light', 'black'), true)) $SETTINGS['bg_mode'] = 'on';
+        if (!in_array($SETTINGS['bg_nodes'], array('low', 'mid', 'high'), true)) $SETTINGS['bg_nodes'] = 'mid';
         @file_put_contents($SETTINGS_FILE, json_encode($SETTINGS, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
     } elseif ($_POST['action'] === 'rebuild') {
         @unlink($CACHE_FILE);
@@ -102,6 +108,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 $BASE_DIR = $SETTINGS['base_dir'];
+$BG_MODE = $SETTINGS['bg_mode'] ?? 'on';
+if (!in_array($BG_MODE, array('on', 'off', 'light', 'black'), true)) $BG_MODE = 'on';
+$BG_NODES = $SETTINGS['bg_nodes'] ?? 'mid';
+if (!in_array($BG_NODES, array('low', 'mid', 'high'), true)) $BG_NODES = 'mid';
+$BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
@@ -622,9 +633,80 @@ function display_value($r, $col) {
   .sbtn button{padding:8px 18px;border:0;border-radius:7px;background:#1f6f43;color:#fff;cursor:pointer}
   .sbtn button.sub2{background:#666}
   @media(max-width:760px){ .hideS{display:none} .sgrid{grid-template-columns:1fr} .sgrid .note{grid-column:1} }
+
+  #bgcanvas{position:fixed;inset:0;z-index:0;pointer-events:none}
+  .wrap{position:relative;z-index:1}
+  body.dark{background:#16120d;color:#e9dfcd}
+  body.dark .sub,body.dark .hint{color:#b8a888}
+  body.dark .stats{color:#cbbfa5}
+  body.dark table{background:#211a12}
+  body.dark th,body.dark td{border-color:#4a3a22}
+  body.dark th{background:#2c2317}
+  body.dark .file a{color:#ff9e3d}
+  body.dark .loc{color:#a08c66}
+  body.dark .none,body.dark details.settings{background:#211a12;border-color:#4a3a22}
+  body.dark .warn{background:#2a2113;border-color:#8a6d1f}
+  body.dark .err{background:#2c1717;border-color:#7a3a3a}
+  body.dark input[type=text],body.dark input[type=number],body.dark select{background:#171310;color:#e9dfcd;border-color:#6b5322}
+  body.dark form.search button,body.dark .sbtn button{background:#b35c00}
+  body.dark .sbtn button.sub2{background:#555}
+  body.dark a{color:#ff9e3d}
 </style>
 </head>
-<body>
+<body<?php echo $BG_MODE === 'black' ? ' class="dark"' : ''; ?>>
+<?php if ($BG_MODE !== 'off'): ?>
+<canvas id="bgcanvas"></canvas>
+<script>
+(function(){
+  var cv = document.getElementById('bgcanvas'); if (!cv) return;
+  var ctx = cv.getContext('2d');
+  var N = <?php echo (int)$BG_COUNT; ?>, LINK = 130;
+  var PALS = {
+    on:    {n:'100,116,139', l:'100,116,139', na:0.55, la:0.30},
+    light: {n:'37,99,235',   l:'37,99,235',   na:0.60, la:0.34},
+    black: {n:'255,150,40',  l:'255,120,20',  na:0.80, la:0.42}
+  };
+  var MODE = '<?php echo $BG_MODE; ?>';
+  var P = PALS[MODE] || PALS.on;
+  var W, H, nodes = [], running = true;
+  function resize(){ W = cv.width = window.innerWidth; H = cv.height = window.innerHeight; }
+  window.addEventListener('resize', resize); resize();
+  for (var i = 0; i < N; i++) {
+    nodes.push({ x: Math.random()*W, y: Math.random()*H,
+      vx: (Math.random()-0.5)*0.35, vy: (Math.random()-0.5)*0.35,
+      g: (MODE === 'black' && i % 6 === 0) });
+  }
+  document.addEventListener('visibilitychange', function(){ running = !document.hidden; if (running) requestAnimationFrame(tick); });
+  function tick(){
+    if (!running) return;
+    ctx.clearRect(0, 0, W, H);
+    var i, j, a, b, dx, dy, d;
+    for (i = 0; i < nodes.length; i++) {
+      a = nodes[i];
+      a.x += a.vx; a.y += a.vy;
+      if (a.x < 0) a.x += W; if (a.x > W) a.x -= W;
+      if (a.y < 0) a.y += H; if (a.y > H) a.y -= H;
+    }
+    for (i = 0; i < nodes.length; i++) for (j = i+1; j < nodes.length; j++) {
+      a = nodes[i]; b = nodes[j];
+      dx = a.x-b.x; dy = a.y-b.y; d = Math.sqrt(dx*dx+dy*dy);
+      if (d < LINK) {
+        ctx.strokeStyle = 'rgba(' + P.l + ',' + (P.la*(1-d/LINK)).toFixed(3) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+    }
+    for (i = 0; i < nodes.length; i++) {
+      a = nodes[i];
+      ctx.fillStyle = a.g ? 'rgba(110,220,130,' + P.na + ')' : 'rgba(' + P.n + ',' + P.na + ')';
+      ctx.beginPath(); ctx.arc(a.x, a.y, 1.6, 0, 6.2832); ctx.fill();
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+<?php endif; ?>
 <div class="wrap">
   <h1>Excel横断検索（Excel_Multi-Sheet_Search）</h1>
   <div class="sub">品番コードから「プライス品番・タグ品番（999-XXXX）」を探します。対象フォルダ＋子フォルダ内の全Excelが対象です（日本語フォルダ・日本語ファイル名対応）。</div>
@@ -782,6 +864,19 @@ function display_value($r, $col) {
         <label>表示列（最大10）</label>
         <input type="text" name="display_cols" value="<?php echo h($SETTINGS['display_cols']); ?>" placeholder="例: F,N,C,L,O（空欄＝標準表示）">
         <div class="note">結果表に出す列を列文字で指定します（最大10個）。見出し行がある列は見出し名で表示されます。</div>
+        <label>背景アニメーション</label>
+        <select name="bg_mode">
+          <option value="on"<?php echo $BG_MODE === 'on' ? ' selected' : ''; ?>>ON（標準の配色）</option>
+          <option value="off"<?php echo $BG_MODE === 'off' ? ' selected' : ''; ?>>OFF</option>
+          <option value="light"<?php echo $BG_MODE === 'light' ? ' selected' : ''; ?>>ライトテーマ</option>
+          <option value="black"<?php echo $BG_MODE === 'black' ? ' selected' : ''; ?>>ブラックテーマ（画面も暗色・アニメは元の配色）</option>
+        </select>
+        <label>ノード数</label>
+        <select name="bg_nodes">
+          <option value="low"<?php echo $BG_NODES === 'low' ? ' selected' : ''; ?>>少ない（44）</option>
+          <option value="mid"<?php echo $BG_NODES === 'mid' ? ' selected' : ''; ?>>中（88）</option>
+          <option value="high"<?php echo $BG_NODES === 'high' ? ' selected' : ''; ?>>多い（160）</option>
+        </select>
       </div>
       <div class="sbtn">
         <button type="submit">設定を保存</button>

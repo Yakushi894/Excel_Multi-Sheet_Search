@@ -426,10 +426,16 @@ function scan_files($base, $exts) {
     $out = array();
     $baseReal = realpath($base);
     if ($baseReal === false) return $out;
-    $it = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($baseReal, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::LEAVES_ONLY
-    );
+    try {
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($baseReal, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+    } catch (Exception $e) {
+        // 読めないフォルダ（権限不足など）では500にせず、警告として返す
+        $GLOBALS['SCAN_ERROR'] = '検索フォルダを読み込めませんでした。フォルダの読み取り権限（コンテナの www-data が読めること）を確認してください：' . $base;
+        return $out;
+    }
     foreach ($it as $f) {
         if (!$f->isFile()) continue;
         $name = $f->getFilename();
@@ -458,6 +464,7 @@ function build_index($base, $exts, $settings, $cacheFile) {
     }
     if ($cacheSig !== $sig) $cache = array(); // シート設定が変わったら作り直し
     $index = array(); $changed = ($cacheSig !== $sig); $errors = array();
+    if (!empty($GLOBALS['SCAN_ERROR'])) $errors['（検索フォルダ）'] = $GLOBALS['SCAN_ERROR'];
     foreach ($files as $rel => $info) {
         $c = isset($cache[$rel]) ? $cache[$rel] : null;
         if ($c && $c['mtime'] === $info['mtime'] && $c['size'] === $info['size']) {
@@ -497,7 +504,7 @@ if (isset($_GET['dl'])) {
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $results = array(); $fileNameHits = array(); $stats = null; $errors = array();
 $searched = ($q !== '');
-$baseOk = is_dir($BASE_DIR);
+$baseOk = is_dir($BASE_DIR) && is_readable($BASE_DIR);
 $indexInfo = null;
 
 if ($searched && $baseOk) {
@@ -623,7 +630,7 @@ function display_value($r, $col) {
   <div class="sub">品番コードから「プライス品番・タグ品番（999-XXXX）」を探します。対象フォルダ＋子フォルダ内の全Excelが対象です（日本語フォルダ・日本語ファイル名対応）。</div>
 
   <?php if (!$baseOk): ?>
-  <div class="warn"><b>検索フォルダが見つかりません：</b><?php echo h($BASE_DIR); ?><br>
+  <div class="warn"><b>検索フォルダが見つからないか、読み取り権限がありません：</b><?php echo h($BASE_DIR); ?><br>
   Docker のボリューム指定（例：<code>/Work</code>）か、下の設定の「検索フォルダ」を確認してください。</div>
   <?php endif; ?>
   <?php if (isset($_GET['saved'])): ?><div class="stats">設定を保存しました（索引は次回検索時に自動で作り直されます）。</div><?php endif; ?>

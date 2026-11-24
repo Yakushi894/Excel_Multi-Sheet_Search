@@ -19,6 +19,8 @@ RUN apt-get update \
 ENV LANG=ja_JP.UTF-8 LC_ALL=ja_JP.UTF-8
 
 COPY index.php /var/www/html/index.php
+# ビルド元のファイル権限に引きずられないよう、Webから読める権限に固定する
+RUN chmod 644 /var/www/html/index.php
 
 # 既定の受け渡し先（compose 側の volumes で上書きマウントされる）
 RUN mkdir -p /Work /Index && chown -R www-data:www-data /Index

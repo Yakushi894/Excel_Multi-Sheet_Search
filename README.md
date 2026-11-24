@@ -5,6 +5,12 @@ Search across many Excel files (including subfolders) by a product code, and ins
 フォルダ＋子フォルダに散らばった多数の Excel を、品番コードで横断検索する単体 PHP です。
 外部ライブラリ不要、Docker ですぐ動きます。日本語フォルダ名・日本語ファイル名対応。
 
+**配布イメージ（Docker Hub）**: https://hub.docker.com/r/yuichi894/excel-multi-sheet-search
+
+```bash
+docker pull yuichi894/excel-multi-sheet-search:1.0
+```
+
 ## できること
 
 - 品番コード（8桁の数字、例 `12345678`）を入力して検索

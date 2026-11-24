@@ -631,7 +631,18 @@ function display_value($r, $col) {
 
   <?php if (!$baseOk): ?>
   <div class="warn"><b>検索フォルダが見つからないか、読み取り権限がありません：</b><?php echo h($BASE_DIR); ?><br>
-  Docker のボリューム指定（例：<code>/Work</code>）か、下の設定の「検索フォルダ」を確認してください。</div>
+  Docker のボリューム指定（例：<code>/Work</code>）か、下の設定の「検索フォルダ」を確認してください。<br>
+  <?php
+  $diag = array();
+  $diag[] = 'フォルダ存在: ' . (is_dir($BASE_DIR) ? 'あり' : 'なし');
+  if (is_dir($BASE_DIR)) {
+      $diag[] = '権限: ' . substr(sprintf('%o', @fileperms($BASE_DIR)), -4);
+      $diag[] = '所有者UID: ' . @fileowner($BASE_DIR);
+  }
+  if (function_exists('posix_geteuid')) $diag[] = '実行中UID: ' . posix_geteuid();
+  echo '<span class="muted">診断: ' . h(implode(' / ', $diag)) . '</span><br>';
+  ?>
+  <span class="muted">フォルダの所有者と実行中UIDが違う場合は、コンテナの環境変数 PUID / PGID に所有者のUID/GID（例：1026 / 100）を指定すると読めるようになります。</span></div>
   <?php endif; ?>
   <?php if (isset($_GET['saved'])): ?><div class="stats">設定を保存しました（索引は次回検索時に自動で作り直されます）。</div><?php endif; ?>
   <?php if ($displayTrunc): ?><div class="warn">表示列は最大10個までです。先頭の10個を適用しています。</div><?php endif; ?>

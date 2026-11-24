@@ -4,7 +4,7 @@
 services:
   excel-multi-sheet-search:
     # Docker Hub の公開イメージを使う（自前ビルドする場合は build: . を有効に）
-    image: yuichi894/excel-multi-sheet-search:1.0
+    image: yuichi894/excel-multi-sheet-search:1.1
     # build: .
     container_name: excel-multi-sheet-search
     ports:
@@ -19,4 +19,8 @@ services:
     environment:
       EMS_WORK_DIR: /Work
       EMS_INDEX_DIR: /Index
+      # フォルダ所有者の UID/GID に合わせると権限エラーを回避できる
+      # （自分のIDは SSH で id コマンドを実行すると分かる。Synology の例：1026 / 100）
+      PUID: "1026"
+      PGID: "100"
     restart: unless-stopped

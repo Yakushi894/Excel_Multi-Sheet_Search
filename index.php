@@ -724,7 +724,8 @@ function display_value($r, $col) {
   if (function_exists('posix_geteuid')) $diag[] = '実行中UID: ' . posix_geteuid();
   echo '<span class="muted">診断: ' . h(implode(' / ', $diag)) . '</span><br>';
   ?>
-  <span class="muted">フォルダの所有者と実行中UIDが違う場合は、コンテナの環境変数 PUID / PGID に所有者のUID/GID（例：1026 / 100）を指定すると読めるようになります。</span>
+  <span class="muted">フォルダの所有者と実行中UIDが違う場合は、コンテナの環境変数 PUID / PGID に所有者のUID/GID（例：1026 / 100）を指定すると読めるようになります。</span><br>
+  <span class="muted">※ Synology 等の ACL 管理フォルダでは、対象フォルダ自体に閲覧権限を付ける方が確実です。File Station の権限設定で「everyone」に読み取り（一覧表示／データの読取り＋フォルダ間の移動／実行ファイル＋属性の読み取り）を付けてください。</span>
   <?php
   // ===== 権限チェック（実際に読めるか・書けるかをその場でテストする） =====
   $envPuid = getenv('PUID'); $envPgid = getenv('PGID');

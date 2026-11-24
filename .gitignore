@@ -1,0 +1,12 @@
+# 索引・設定（実行時に生成される）
+/Index/
+/index/
+settings.json
+search_index_v2.json
+gem_search_cache.json
+
+# テスト用Excel・ログ
+*.xlsx
+*.xlsm
+*.log
+.DS_Store

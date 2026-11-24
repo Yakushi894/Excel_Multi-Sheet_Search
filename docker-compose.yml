@@ -1,0 +1,21 @@
+# Excel_Multi-Sheet_Search - 起動例
+#   docker compose up -d --build
+#   ブラウザで http://<ホストのアドレス>:8080/ を開く
+services:
+  excel-multi-sheet-search:
+    build: .
+    image: excel-multi-sheet-search:1.0
+    container_name: excel-multi-sheet-search
+    ports:
+      - "8080:80"
+    volumes:
+      # ★Excelが入っている親フォルダを /Work に渡す（読み取り専用でOK）
+      #   日本語フォルダでもそのまま書けます。左側はホスト側の実パスに書き換えてください
+      - /volume1/共有フォルダ/Excelフォルダ:/Work:ro
+      # ★索引（検索結果のキャッシュ）と設定の保存先を /Index に渡す（書き込み必須）
+      #   コンテナを作り直しても索引が残るので、2回目以降も高速なままです
+      - ./index:/Index
+    environment:
+      EMS_WORK_DIR: /Work
+      EMS_INDEX_DIR: /Index
+    restart: unless-stopped

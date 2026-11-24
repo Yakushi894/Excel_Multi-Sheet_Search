@@ -669,6 +669,12 @@ function display_value($r, $col) {
   if ($envPuid !== false && $envPuid !== '' && (string)$runUid !== (string)$envPuid) {
       echo '<span class="muted">※ PUID は指定されていますが実行UIDに反映されていません。コンテナが再作成されていないか、古いイメージの可能性があります（イメージの更新＋作り直しをしてください）。</span><br>';
   }
+  if ($envPgid !== false && $envPgid !== '' && (string)$runGid !== (string)$envPgid) {
+      echo '<span class="muted">※ PGID は指定されていますが実行GIDに反映されていません。イメージ v1.3 以降で解消します。</span><br>';
+  }
+  if ($workReadable === false && (string)$runUid === (string)@fileowner($BASE_DIR)) {
+      echo '<span class="muted">※ UIDは所有者と一致しているのに読めません。Synology の ACL 管理フォルダ（権限表示 0000）の可能性があります。その場合は File Station の権限で「everyone」に読み取りを付けるのが確実です。</span><br>';
+  }
   echo '</div>';
   ?>
   </div>

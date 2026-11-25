@@ -72,6 +72,7 @@ function default_settings() {
         'bg_nodes'     => 'mid', // low=44 / mid=88 / high=160
         'layout'       => '',      // 表示レイアウトJSON（空欄=標準表示）
         'image_tpl'    => '',      // 画像URLテンプレート（空欄=画像なし）
+        'show_age'     => '0',     // ファイルの時期表示 1=する 0=しない
     );
 }
 function load_settings($file) {
@@ -99,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $SETTINGS['bg_nodes'] = (string)($_POST['bg_nodes'] ?? 'mid');
         $SETTINGS['layout'] = trim((string)($_POST['layout'] ?? ''));
         $SETTINGS['image_tpl'] = trim((string)($_POST['image_tpl'] ?? ''));
+        $SETTINGS['show_age'] = (($_POST['show_age'] ?? '0') === '1') ? '1' : '0';
         if (!in_array($SETTINGS['sheet_mode'], array('index', 'name', 'all'), true)) $SETTINGS['sheet_mode'] = 'index';
         if (!in_array($SETTINGS['bg_mode'], array('on', 'off', 'light', 'black'), true)) $SETTINGS['bg_mode'] = 'on';
         if (!in_array($SETTINGS['bg_nodes'], array('low', 'mid', 'high'), true)) $SETTINGS['bg_nodes'] = 'mid';
@@ -120,7 +122,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.9');
+define('APP_VERSION', '1.10');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -243,6 +245,25 @@ function layout_value($r, $e) {
     }
     return array(display_value($r, $e['col']), '');
 }
+function file_age_label($ts) {
+    if (!$ts) return '';
+    $d = floor((time() - $ts) / 86400);
+    if ($d < 1) return '今日のファイル';
+    if ($d < 7) return $d . '日前のファイル';
+    if ($d < 30) return '約' . max(1, (int)round($d / 7)) . '週間前のファイル';
+    $base = date('Y年n月', $ts) . '頃のファイル';
+    if ($d < 365) return $base . '（約' . max(1, (int)round($d / 30.4)) . 'ヶ月前）';
+    return $base;
+}
+function age_div($r) {
+    global $BASE_DIR, $AGE_ON;
+    if (!$AGE_ON) return '';
+    static $cache = array();
+    $f = $r['file'];
+    if (!array_key_exists($f, $cache)) $cache[$f] = @filemtime($BASE_DIR . '/' . $f);
+    $label = file_age_label($cache[$f] ? $cache[$f] : null);
+    return $label === '' ? '' : '<div class="loc">' . h($label) . '</div>';
+}
 function image_url($r, $tpl) {
     $tpl = trim((string)$tpl);
     if ($tpl === '') return '';
@@ -261,6 +282,7 @@ function img_cell($r, $tpl) {
     return '<a href="' . $u . '" target="_blank" rel="noopener"><img src="' . $u . '" alt="" loading="lazy" style="max-width:72px;max-height:72px;border-radius:6px" onerror="imgMissing(this)"></a>';
 }
 $IMG_ON = trim((string)($SETTINGS['image_tpl'] ?? '')) !== '';
+$AGE_ON = ($SETTINGS['show_age'] ?? '0') === '1';
 $LAYOUT = parse_layout($SETTINGS['layout'] ?? '');
 $LAYOUT_EXAMPLE = json_encode(array(
     array('key' => 'price', 'label' => $KEY_LABELS['price']),
@@ -922,7 +944,7 @@ function toggleNodes(){
         <?php echo h($r['sheet']); ?> ／ <?php echo (int)$r['row']; ?>行目</div>
       </td>
           <?php else: list($lv, $lc) = layout_value($r, $e); ?>
-      <td<?php echo $lc !== '' ? ' class="' . $lc . '"' : ''; ?>><?php echo h($lv); ?></td>
+      <td<?php echo $lc !== '' ? ' class="' . $lc . '"' : ''; ?>><?php echo h($lv); ?><?php if ($e['key'] === 'name') echo age_div($r); ?></td>
           <?php endif; ?>
         <?php endforeach; ?>
       <?php elseif ($DISPLAY_COLS): ?>
@@ -930,7 +952,7 @@ function toggleNodes(){
       <?php else: ?>
         <td class="price"><?php echo h($r['fields']['price']); ?></td>
         <td><?php echo h($r['fields']['code']); ?></td>
-        <td><?php echo h($r['fields']['name']); ?></td>
+        <td><?php echo h($r['fields']['name']); ?><?php echo age_div($r); ?></td>
         <td class="hideS"><?php echo h($r['fields']['group']); ?></td>
         <td class="num"><?php echo h(fmt_money($r['fields']['sell'])); ?></td>
         <td class="num hideS"><?php echo h(fmt_money($r['fields']['base_price'])); ?></td>
@@ -1007,6 +1029,12 @@ function toggleNodes(){
         <label>画像URLテンプレート</label>
         <input type="text" name="image_tpl" value="<?php echo h($SETTINGS['image_tpl'] ?? ''); ?>" placeholder="例: https://hogehoge.com/gazou/{code}.JPG">
         <div class="note">結果に商品画像を表示します。{code}=品番コード、{price}=プライス品番、{name}=商品名、{group}=グループ に置換されます。未指定なら画像の枠自体を出しません。指定したのに画像が無い行は「ありません」と表示します。レイアウトの「画像」列でも使えます。</div>
+        <label>ファイルの時期表示</label>
+        <select name="show_age">
+          <option value="0"<?php echo ($SETTINGS['show_age'] ?? '0') === '0' ? ' selected' : ''; ?>>表示しない</option>
+          <option value="1"<?php echo ($SETTINGS['show_age'] ?? '0') === '1' ? ' selected' : ''; ?>>表示する</option>
+        </select>
+        <div class="note">商品名の下に、Excelファイルの更新日時から「2025年10月頃のファイル（約2ヶ月前）」のように時期を表示します。</div>
         <label>背景アニメーション</label>
         <select name="bg_mode">
           <option value="on"<?php echo $BG_MODE === 'on' ? ' selected' : ''; ?>>ON（標準の配色）</option>

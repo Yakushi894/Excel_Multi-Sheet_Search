@@ -252,6 +252,13 @@ $LAYOUT_EXAMPLE = json_encode(array(
     array('key' => 'spec', 'label' => $KEY_LABELS['spec']),
     array('key' => 'file', 'label' => $KEY_LABELS['file'])
 ), JSON_UNESCAPED_UNICODE);
+$LAYOUT_EFFECTIVE = $LAYOUT;
+if (!$LAYOUT_EFFECTIVE) {
+    $LAYOUT_EFFECTIVE = array();
+    foreach (array('price','code','name','group','sell','base_price','cost','spec','file') as $k) {
+        $LAYOUT_EFFECTIVE[] = array('key' => $k, 'col' => '', 'label' => $KEY_LABELS[$k]);
+    }
+}
 
 
 /* ---------------- xlsx 解析（ZipArchive + DOM、zip拡張が無い環境では純PHPリーダー） ---------------- */
@@ -708,6 +715,14 @@ function display_value($r, $col) {
   body.dark form.search button,body.dark .sbtn button{background:#b35c00}
   body.dark .sbtn button.sub2{background:#555}
   body.dark a{color:#ff9e3d}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:none}
+  .modal{background:#fff;border-radius:10px;max-width:660px;margin:5vh auto;padding:16px 18px;max-height:86vh;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+  body.dark .modal{background:#211a12}
+  .lrow{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+  .lrow select,.lrow input{padding:6px 8px;border:1px solid #bbb;border-radius:6px;font-size:13.5px}
+  .edbtn{padding:7px 13px;border:0;border-radius:7px;background:#666;color:#fff;cursor:pointer;font-size:13.5px}
+  .edbtn.mv{padding:5px 9px}
 </style>
 </head>
 <body<?php echo $BG_MODE === 'black' ? ' class="dark"' : ''; ?>>
@@ -912,7 +927,7 @@ function display_value($r, $col) {
 
   <details class="settings" <?php echo isset($_GET['saved']) ? 'open' : ''; ?>>
     <summary>設定（シート・検索列・表示列）／索引の状態</summary>
-    <form method="post" action="">
+    <form method="post" action="" id="settingsForm">
       <input type="hidden" name="action" value="save_settings">
       <div class="sgrid">
         <label>検索フォルダ</label>
@@ -941,6 +956,7 @@ function display_value($r, $col) {
         <label>表示レイアウト（JSON）</label>
         <textarea name="layout" rows="7" style="font-family:monospace;font-size:12.5px;padding:7px 9px;border:1px solid #bbb;border-radius:6px;width:100%;box-sizing:border-box"><?php echo h($SETTINGS['layout'] ?? ''); ?></textarea>
         <div class="note">結果表の列順と表示名をJSONで指定します（表示列より優先、最大15列）。key は price / code / name / group / sell / base_price / cost / spec / file、または {"col":"N","label":"好きな名前"} でシートの列を直接指定できます。空欄＝標準表示。<br>標準レイアウト：<code><?php echo h($LAYOUT_EXAMPLE); ?></code></div>
+        <div class="note"><button type="button" class="edbtn" onclick="openLayoutEditor()">レイアウトを画面で編集（ポップアップ）</button> 並び替え・表示名の変更が画面でできます。</div>
         <label>背景アニメーション</label>
         <select name="bg_mode">
           <option value="on"<?php echo $BG_MODE === 'on' ? ' selected' : ''; ?>>ON（標準の配色）</option>
@@ -975,5 +991,71 @@ function display_value($r, $col) {
     </div>
   </details>
 </div>
+<div class="modal-bg" id="layoutModal">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b>表示レイアウトの編集</b>
+      <button type="button" class="edbtn" onclick="closeLayoutEditor()">閉じる</button>
+    </div>
+    <div style="color:#777;font-size:12px;margin:6px 0 10px">列の種類と表示名を設定し、↑↓で並び替えます。「決定」で保存して再読み込みします。</div>
+    <div id="layoutRows"></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="edbtn" onclick="addLayoutRow()">＋ 列を追加</button>
+      <button type="button" class="edbtn" onclick="resetLayout()">標準に戻す</button>
+      <button type="button" class="edbtn" style="background:#1f6f43" onclick="applyLayout()">決定（保存して再読み込み）</button>
+    </div>
+  </div>
+</div>
+<script>
+var LKEYS = <?php echo json_encode($KEY_LABELS, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP); ?>;
+var LSTATE = <?php echo json_encode($LAYOUT_EFFECTIVE, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP); ?>;
+function lesc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function renderLayoutRows(){
+  var box = document.getElementById('layoutRows'); var html = '';
+  LSTATE.forEach(function(e, i){
+    var isCol = !e.key;
+    html += '<div class="lrow">';
+    html += '<select onchange="lsetType(' + i + ',this.value)">';
+    Object.keys(LKEYS).forEach(function(k){
+      html += '<option value="' + k + '"' + (e.key === k ? ' selected' : '') + '>' + lesc(LKEYS[k]) + '</option>';
+    });
+    html += '<option value="__col"' + (isCol ? ' selected' : '') + '>列を指定（A〜Z）</option>';
+    html += '</select>';
+    html += '<input type="text" style="width:52px" placeholder="列" value="' + lesc(e.col || '') + '"' + (isCol ? '' : ' disabled') + ' oninput="LSTATE[' + i + '].col=this.value">';
+    html += '<input type="text" style="flex:1;min-width:130px" placeholder="表示名" value="' + lesc(e.label || '') + '" oninput="LSTATE[' + i + '].label=this.value">';
+    html += '<button type="button" class="edbtn mv" onclick="lmove(' + i + ',-1)">↑</button>';
+    html += '<button type="button" class="edbtn mv" onclick="lmove(' + i + ',1)">↓</button>';
+    html += '<button type="button" class="edbtn mv" onclick="ldel(' + i + ')">✕</button>';
+    html += '</div>';
+  });
+  box.innerHTML = html;
+}
+function lsetType(i, v){ if (v === '__col') { LSTATE[i].key = ''; } else { LSTATE[i].key = v; LSTATE[i].col = ''; } renderLayoutRows(); }
+function lmove(i, d){ var j = i + d; if (j < 0 || j >= LSTATE.length) return; var t = LSTATE[i]; LSTATE[i] = LSTATE[j]; LSTATE[j] = t; renderLayoutRows(); }
+function ldel(i){ LSTATE.splice(i, 1); renderLayoutRows(); }
+function addLayoutRow(){ LSTATE.push({key:'name', col:'', label:''}); renderLayoutRows(); }
+function openLayoutEditor(){ document.getElementById('layoutModal').style.display = 'block'; renderLayoutRows(); }
+function closeLayoutEditor(){ document.getElementById('layoutModal').style.display = 'none'; }
+function applyLayout(){
+  var out = [];
+  for (var i = 0; i < LSTATE.length; i++) {
+    var e = LSTATE[i];
+    if (e.key) { out.push({key: e.key, label: e.label || ''}); }
+    else {
+      var c = String(e.col || '').toUpperCase().trim();
+      if (!/^[A-Z]{1,2}$/.test(c)) { alert('列の指定が正しくありません：' + (e.col || '（空）')); return; }
+      out.push({col: c, label: e.label || ''});
+    }
+  }
+  if (!out.length) { alert('列がありません'); return; }
+  document.querySelector('textarea[name=layout]').value = JSON.stringify(out);
+  document.getElementById('settingsForm').submit();
+}
+function resetLayout(){
+  if (!confirm('レイアウトを標準に戻しますか？')) return;
+  document.querySelector('textarea[name=layout]').value = '';
+  document.getElementById('settingsForm').submit();
+}
+</script>
 </body>
 </html>

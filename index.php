@@ -71,6 +71,7 @@ function default_settings() {
         'bg_mode'      => 'on',  // on / off / light / black
         'bg_nodes'     => 'mid', // low=44 / mid=88 / high=160
         'layout'       => '',      // 表示レイアウトJSON（空欄=標準表示）
+        'image_tpl'    => '',      // 画像URLテンプレート（空欄=画像なし）
     );
 }
 function load_settings($file) {
@@ -97,6 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $SETTINGS['bg_mode'] = (string)($_POST['bg_mode'] ?? 'on');
         $SETTINGS['bg_nodes'] = (string)($_POST['bg_nodes'] ?? 'mid');
         $SETTINGS['layout'] = trim((string)($_POST['layout'] ?? ''));
+        $SETTINGS['image_tpl'] = trim((string)($_POST['image_tpl'] ?? ''));
         if (!in_array($SETTINGS['sheet_mode'], array('index', 'name', 'all'), true)) $SETTINGS['sheet_mode'] = 'index';
         if (!in_array($SETTINGS['bg_mode'], array('on', 'off', 'light', 'black'), true)) $SETTINGS['bg_mode'] = 'on';
         if (!in_array($SETTINGS['bg_nodes'], array('low', 'mid', 'high'), true)) $SETTINGS['bg_nodes'] = 'mid';
@@ -118,7 +120,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.8');
+define('APP_VERSION', '1.9');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -199,7 +201,7 @@ function parse_cols_spec($spec, $max) {
 
 list($SEARCH_COLS, $searchTrunc) = parse_cols_spec($SETTINGS['search_cols'], 0);
 list($DISPLAY_COLS, $displayTrunc) = parse_cols_spec($SETTINGS['display_cols'], 10);
-$KEY_LABELS = array('price' => 'プライス品番・タグ品番', 'code' => '品番コード', 'name' => '商品名', 'group' => 'グループ', 'sell' => '推定売価', 'base_price' => '基準価格', 'cost' => '推定原価', 'spec' => 'スペック', 'file' => 'Excel名');
+$KEY_LABELS = array('price' => 'プライス品番・タグ品番', 'code' => '品番コード', 'name' => '商品名', 'group' => 'グループ', 'sell' => '推定売価', 'base_price' => '基準価格', 'cost' => '推定原価', 'spec' => 'スペック', 'image' => '画像', 'file' => 'Excel名');
 /* 表示レイアウト（JSON）: [{"key":"price","label":"..."},{"col":"N","label":"..."}] */
 function parse_layout($json) {
     if (trim((string)$json) === '') return null;
@@ -211,7 +213,7 @@ function parse_layout($json) {
         $key = isset($e['key']) ? (string)$e['key'] : '';
         $col = isset($e['col']) ? strtoupper(trim((string)$e['col'])) : '';
         $label = isset($e['label']) ? (string)$e['label'] : '';
-        if (in_array($key, array('price','code','name','group','sell','base_price','cost','spec','file'), true)) {
+        if (in_array($key, array('price','code','name','group','sell','base_price','cost','spec','image','file'), true)) {
             $out[] = array('key' => $key, 'col' => '', 'label' => $label);
         } elseif (preg_match('/^[A-Z]{1,2}$/', $col)) {
             $out[] = array('key' => '', 'col' => $col, 'label' => $label);
@@ -241,6 +243,24 @@ function layout_value($r, $e) {
     }
     return array(display_value($r, $e['col']), '');
 }
+function image_url($r, $tpl) {
+    $tpl = trim((string)$tpl);
+    if ($tpl === '') return '';
+    $map = array(
+        '{code}'  => rawurlencode($r['fields']['code']),
+        '{price}' => rawurlencode($r['fields']['price']),
+        '{name}'  => rawurlencode($r['fields']['name']),
+        '{group}' => rawurlencode($r['fields']['group'])
+    );
+    return strtr($tpl, $map);
+}
+function img_cell($r, $tpl) {
+    $u = image_url($r, $tpl);
+    if ($u === '') return '';
+    $u = h($u);
+    return '<a href="' . $u . '" target="_blank" rel="noopener"><img src="' . $u . '" alt="" loading="lazy" style="max-width:72px;max-height:72px;border-radius:6px" onerror="imgMissing(this)"></a>';
+}
+$IMG_ON = trim((string)($SETTINGS['image_tpl'] ?? '')) !== '';
 $LAYOUT = parse_layout($SETTINGS['layout'] ?? '');
 $LAYOUT_EXAMPLE = json_encode(array(
     array('key' => 'price', 'label' => $KEY_LABELS['price']),
@@ -726,58 +746,78 @@ function display_value($r, $col) {
   .edbtn.mv{padding:5px 9px}
   body.dark a{color:#f0a35e}
 </style>
+<script>
+function imgMissing(img){
+  var t = (img.parentNode && img.parentNode.tagName === 'A') ? img.parentNode : img;
+  var sp = document.createElement('span');
+  sp.className = 'loc'; sp.textContent = 'ありません';
+  t.replaceWith(sp);
+}
+</script>
 </head>
 <body<?php echo $BG_MODE === 'black' ? ' class="dark"' : ''; ?>>
 <?php if ($BG_MODE !== 'off'): ?>
 <canvas id="bgcanvas"></canvas>
 <script>
+var BG_MODE = '<?php echo $BG_MODE; ?>', BG_N = <?php echo (int)$BG_COUNT; ?>;
+var BG_PALS = {
+  on:    {n:'100,116,139', l:'100,116,139', na:0.55, la:0.30},
+  light: {n:'37,99,235',   l:'37,99,235',   na:0.60, la:0.34},
+  black: {n:'255,150,40',  l:'255,120,20',  na:0.80, la:0.42}
+};
+var bgRun = false, bgCv = null, bgCtx = null, bgNS = [], bgW = 0, bgH = 0;
+function bgResize(){ if (bgCv) { bgW = bgCv.width = window.innerWidth; bgH = bgCv.height = window.innerHeight; } }
+window.addEventListener('resize', bgResize);
+function bgTick(){
+  if (!bgRun) return;
+  var P = BG_PALS[BG_MODE] || BG_PALS.on, LINK = 130;
+  bgCtx.clearRect(0, 0, bgW, bgH);
+  var i, j, a, b, dx, dy, d;
+  for (i = 0; i < bgNS.length; i++) {
+    a = bgNS[i]; a.x += a.vx; a.y += a.vy;
+    if (a.x < 0) a.x += bgW; if (a.x > bgW) a.x -= bgW;
+    if (a.y < 0) a.y += bgH; if (a.y > bgH) a.y -= bgH;
+  }
+  for (i = 0; i < bgNS.length; i++) for (j = i + 1; j < bgNS.length; j++) {
+    a = bgNS[i]; b = bgNS[j];
+    dx = a.x - b.x; dy = a.y - b.y; d = Math.sqrt(dx*dx + dy*dy);
+    if (d < LINK) {
+      bgCtx.strokeStyle = 'rgba(' + P.l + ',' + (P.la * (1 - d / LINK)).toFixed(3) + ')';
+      bgCtx.lineWidth = 1;
+      bgCtx.beginPath(); bgCtx.moveTo(a.x, a.y); bgCtx.lineTo(b.x, b.y); bgCtx.stroke();
+    }
+  }
+  for (i = 0; i < bgNS.length; i++) {
+    a = bgNS[i];
+    bgCtx.fillStyle = a.g ? 'rgba(110,220,130,' + P.na + ')' : 'rgba(' + P.n + ',' + P.na + ')';
+    bgCtx.beginPath(); bgCtx.arc(a.x, a.y, 1.6, 0, 6.2832); bgCtx.fill();
+  }
+  requestAnimationFrame(bgTick);
+}
+function bgStart(){
+  bgCv = document.getElementById('bgcanvas');
+  if (!bgCv || bgRun) return;
+  bgCtx = bgCv.getContext('2d'); bgResize();
+  if (!bgNS.length) {
+    for (var i = 0; i < BG_N; i++) bgNS.push({x: Math.random()*bgW, y: Math.random()*bgH, vx: (Math.random()-0.5)*0.35, vy: (Math.random()-0.5)*0.35, g: (BG_MODE === 'black' && i % 6 === 0)});
+  }
+  bgRun = true; requestAnimationFrame(bgTick);
+}
+function bgStop(){ bgRun = false; if (bgCv) bgCv.style.display = 'none'; }
+function toggleNodes(){
+  var c = document.getElementById('bgcanvas'); if (!c) return;
+  var b = document.getElementById('bgToggleBtn');
+  if (bgRun) { bgStop(); try { localStorage.setItem('ems_nodes_hidden', '1'); } catch(e) {} if (b) b.textContent = 'ノードを表示'; }
+  else { c.style.display = ''; bgStart(); try { localStorage.removeItem('ems_nodes_hidden'); } catch(e) {} if (b) b.textContent = 'ノードを非表示'; }
+}
 (function(){
-  var cv = document.getElementById('bgcanvas'); if (!cv) return;
-  var ctx = cv.getContext('2d');
-  var N = <?php echo (int)$BG_COUNT; ?>, LINK = 130;
-  var PALS = {
-    on:    {n:'100,116,139', l:'100,116,139', na:0.55, la:0.30},
-    light: {n:'37,99,235',   l:'37,99,235',   na:0.60, la:0.34},
-    black: {n:'255,150,40',  l:'255,120,20',  na:0.80, la:0.42}
-  };
-  var MODE = '<?php echo $BG_MODE; ?>';
-  var P = PALS[MODE] || PALS.on;
-  var W, H, nodes = [], running = true;
-  function resize(){ W = cv.width = window.innerWidth; H = cv.height = window.innerHeight; }
-  window.addEventListener('resize', resize); resize();
-  for (var i = 0; i < N; i++) {
-    nodes.push({ x: Math.random()*W, y: Math.random()*H,
-      vx: (Math.random()-0.5)*0.35, vy: (Math.random()-0.5)*0.35,
-      g: (MODE === 'black' && i % 6 === 0) });
-  }
-  document.addEventListener('visibilitychange', function(){ running = !document.hidden; if (running) requestAnimationFrame(tick); });
-  function tick(){
-    if (!running) return;
-    ctx.clearRect(0, 0, W, H);
-    var i, j, a, b, dx, dy, d;
-    for (i = 0; i < nodes.length; i++) {
-      a = nodes[i];
-      a.x += a.vx; a.y += a.vy;
-      if (a.x < 0) a.x += W; if (a.x > W) a.x -= W;
-      if (a.y < 0) a.y += H; if (a.y > H) a.y -= H;
-    }
-    for (i = 0; i < nodes.length; i++) for (j = i+1; j < nodes.length; j++) {
-      a = nodes[i]; b = nodes[j];
-      dx = a.x-b.x; dy = a.y-b.y; d = Math.sqrt(dx*dx+dy*dy);
-      if (d < LINK) {
-        ctx.strokeStyle = 'rgba(' + P.l + ',' + (P.la*(1-d/LINK)).toFixed(3) + ')';
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      }
-    }
-    for (i = 0; i < nodes.length; i++) {
-      a = nodes[i];
-      ctx.fillStyle = a.g ? 'rgba(110,220,130,' + P.na + ')' : 'rgba(' + P.n + ',' + P.na + ')';
-      ctx.beginPath(); ctx.arc(a.x, a.y, 1.6, 0, 6.2832); ctx.fill();
-    }
-    requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
+  var hidden = false;
+  try { hidden = localStorage.getItem('ems_nodes_hidden') === '1'; } catch(e) {}
+  var c = document.getElementById('bgcanvas'); if (!c) return;
+  if (hidden) {
+    c.style.display = 'none';
+    document.addEventListener('DOMContentLoaded', function(){ var b = document.getElementById('bgToggleBtn'); if (b) b.textContent = 'ノードを表示'; });
+  } else { bgStart(); }
 })();
 </script>
 <?php endif; ?>
@@ -844,6 +884,7 @@ function display_value($r, $col) {
     <button type="submit">検索</button>
   </form>
   <div class="hint">入力例：品番コード <b>12345678</b>（8桁・完全一致）／ 途中までの数字でも部分一致 ／ <b>999-0001</b> プライス品番からも可 ／ 商品名でも可 ／ セル内に「12345678+12345679」と複数入っている場合も個別にヒットします</div>
+  <?php if ($BG_MODE !== 'off'): ?><div style="text-align:right;margin-top:6px"><button type="button" class="edbtn" id="bgToggleBtn" onclick="toggleNodes()">ノードを非表示</button></div><?php endif; ?>
 
 <?php if ($searched): ?>
   <?php if ($baseOk): ?>
@@ -855,6 +896,7 @@ function display_value($r, $col) {
   <?php if ($results): ?>
   <table>
     <tr>
+      <?php if (!$LAYOUT && $IMG_ON): ?><th>画像</th><?php endif; ?>
       <?php if ($LAYOUT): ?>
         <?php foreach ($LAYOUT as $e): ?><th<?php echo in_array($e['key'], array('group','base_price','cost','spec'), true) ? ' class="hideS"' : ''; ?>><?php echo h(layout_label($e, $displayLabels)); ?></th><?php endforeach; ?>
       <?php elseif ($DISPLAY_COLS): ?>
@@ -868,9 +910,12 @@ function display_value($r, $col) {
     </tr>
     <?php foreach ($results as $r): ?>
     <tr>
+      <?php if (!$LAYOUT && $IMG_ON): ?><td><?php echo img_cell($r, $SETTINGS['image_tpl'] ?? ''); ?></td><?php endif; ?>
       <?php if ($LAYOUT): ?>
         <?php foreach ($LAYOUT as $e): ?>
-          <?php if ($e['key'] === 'file'): ?>
+          <?php if ($e['key'] === 'image'): ?>
+      <td><?php echo img_cell($r, $SETTINGS['image_tpl'] ?? ''); ?></td>
+          <?php elseif ($e['key'] === 'file'): ?>
       <td class="file">
         <a href="?dl=<?php echo rawurlencode($r['file']); ?>"><?php echo h(basename($r['file'])); ?></a>
         <div class="loc"><?php echo h(dirname($r['file']) === '.' ? '（親フォルダ）' : dirname($r['file'])); ?><br>
@@ -959,6 +1004,9 @@ function display_value($r, $col) {
         <textarea name="layout" rows="7" style="font-family:monospace;font-size:12.5px;padding:7px 9px;border:1px solid #bbb;border-radius:6px;width:100%;box-sizing:border-box"><?php echo h($SETTINGS['layout'] ?? ''); ?></textarea>
         <div class="note">結果表の列順と表示名をJSONで指定します（表示列より優先、最大15列）。key は price / code / name / group / sell / base_price / cost / spec / file、または {"col":"N","label":"好きな名前"} でシートの列を直接指定できます。空欄＝標準表示。<br>標準レイアウト：<code><?php echo h($LAYOUT_EXAMPLE); ?></code></div>
         <div class="note"><button type="button" class="edbtn" onclick="openLayoutEditor()">レイアウトを画面で編集（ポップアップ）</button> 並び替え・表示名の変更が画面でできます。</div>
+        <label>画像URLテンプレート</label>
+        <input type="text" name="image_tpl" value="<?php echo h($SETTINGS['image_tpl'] ?? ''); ?>" placeholder="例: https://hogehoge.com/gazou/{code}.JPG">
+        <div class="note">結果に商品画像を表示します。{code}=品番コード、{price}=プライス品番、{name}=商品名、{group}=グループ に置換されます。未指定なら画像の枠自体を出しません。指定したのに画像が無い行は「ありません」と表示します。レイアウトの「画像」列でも使えます。</div>
         <label>背景アニメーション</label>
         <select name="bg_mode">
           <option value="on"<?php echo $BG_MODE === 'on' ? ' selected' : ''; ?>>ON（標準の配色）</option>

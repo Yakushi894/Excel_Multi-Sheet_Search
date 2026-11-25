@@ -124,7 +124,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.12');
+define('APP_VERSION', '1.13');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -841,22 +841,7 @@ function bgStart(){
   }
   bgRun = true; requestAnimationFrame(bgTick);
 }
-function bgStop(){ bgRun = false; if (bgCv) bgCv.style.display = 'none'; }
-function toggleNodes(){
-  var c = document.getElementById('bgcanvas'); if (!c) return;
-  var b = document.getElementById('bgToggleBtn');
-  if (bgRun) { bgStop(); try { localStorage.setItem('ems_nodes_hidden', '1'); } catch(e) {} if (b) b.textContent = 'ノードを表示'; }
-  else { c.style.display = ''; bgStart(); try { localStorage.removeItem('ems_nodes_hidden'); } catch(e) {} if (b) b.textContent = 'ノードを非表示'; }
-}
-(function(){
-  var hidden = false;
-  try { hidden = localStorage.getItem('ems_nodes_hidden') === '1'; } catch(e) {}
-  var c = document.getElementById('bgcanvas'); if (!c) return;
-  if (hidden) {
-    c.style.display = 'none';
-    document.addEventListener('DOMContentLoaded', function(){ var b = document.getElementById('bgToggleBtn'); if (b) b.textContent = 'ノードを表示'; });
-  } else { bgStart(); }
-})();
+bgStart();
 </script>
 <?php endif; ?>
 <div class="wrap">
@@ -922,7 +907,6 @@ function toggleNodes(){
     <button type="submit">検索</button>
   </form>
   <div class="hint">入力例：品番コード <b>12345678</b>（8桁・完全一致）／ 途中までの数字でも部分一致 ／ <b>999-0001</b> プライス品番からも可 ／ 商品名でも可 ／ セル内に「12345678+12345679」と複数入っている場合も個別にヒットします</div>
-  <?php if ($BG_MODE !== 'off' && $NODES_SHOW): ?><div style="text-align:right;margin-top:6px"><button type="button" class="edbtn" id="bgToggleBtn" onclick="toggleNodes()">ノードを非表示</button></div><?php endif; ?>
 
 <?php if ($searched): ?>
   <?php if ($baseOk): ?>
@@ -1075,7 +1059,7 @@ function toggleNodes(){
           <option value="1"<?php echo ($SETTINGS['nodes_show'] ?? '1') === '1' ? ' selected' : ''; ?>>表示する</option>
           <option value="0"<?php echo ($SETTINGS['nodes_show'] ?? '1') === '0' ? ' selected' : ''; ?>>完全に非表示</option>
         </select>
-        <div class="note">完全に非表示にすると、背景アニメーション自体を描画しません（全ブラウザ共通の設定）。検索欄下のボタンは、そのブラウザだけの一時的な切替です。</div>
+        <div class="note">完全に非表示にすると、背景アニメーション自体を描画しません。</div>
       </div>
       <div class="sbtn">
         <button type="submit">設定を保存</button>

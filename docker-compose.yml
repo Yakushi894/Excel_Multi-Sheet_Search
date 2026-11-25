@@ -4,7 +4,7 @@
 services:
   excel-multi-sheet-search:
     # Docker Hub の公開イメージを使う（自前ビルドする場合は build: . を有効に）
-    image: yuichi894/excel-multi-sheet-search:1.12
+    image: yuichi894/excel-multi-sheet-search:1.13
     # build: .
     container_name: excel-multi-sheet-search
     ports:

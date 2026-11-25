@@ -124,7 +124,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.11');
+define('APP_VERSION', '1.12');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -743,7 +743,17 @@ function display_value($r, $col) {
   .sbtn{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
   .sbtn button{padding:8px 18px;border:0;border-radius:7px;background:#1f6f43;color:#fff;cursor:pointer}
   .sbtn button.sub2{background:#666}
-  @media(max-width:760px){ .hideS{display:none} .sgrid{grid-template-columns:1fr} .sgrid .note{grid-column:1} }
+  @media(max-width:760px){
+    .sgrid{grid-template-columns:1fr} .sgrid .note{grid-column:1}
+    table.rlist, table.rlist tbody, table.rlist tr, table.rlist td{display:block;width:auto}
+    table.rlist tr.rhead{display:none}
+    table.rlist tr{border:1px solid #c9c9c9;border-radius:10px;margin:10px 0;padding:8px 10px;background:rgba(255,255,255,.65)}
+    body.dark table.rlist tr{border-color:#5a4632;background:rgba(30,22,14,.65)}
+    table.rlist td{border:0;border-bottom:1px dashed rgba(0,0,0,.1);padding:4px 0;text-align:left}
+    table.rlist td:last-child{border-bottom:0}
+    table.rlist td::before{content:attr(data-label);display:block;font-size:11px;font-weight:600;color:#888}
+    table.rlist td.price{font-size:16px}
+  }
 
   #bgcanvas{position:fixed;inset:0;z-index:0;pointer-events:none}
   .wrap{position:relative;z-index:1}
@@ -922,8 +932,8 @@ function toggleNodes(){
   </div>
 
   <?php if ($results): ?>
-  <table>
-    <tr>
+  <table class="rlist">
+    <tr class="rhead">
       <?php if (!$LAYOUT && $IMG_ON): ?><th>画像</th><?php endif; ?>
       <?php if ($LAYOUT): ?>
         <?php foreach ($LAYOUT as $e): ?><th<?php echo in_array($e['key'], array('group','base_price','cost','spec'), true) ? ' class="hideS"' : ''; ?>><?php echo h(layout_label($e, $displayLabels)); ?></th><?php endforeach; ?>
@@ -938,13 +948,13 @@ function toggleNodes(){
     </tr>
     <?php foreach ($results as $r): ?>
     <tr>
-      <?php if (!$LAYOUT && $IMG_ON): ?><td><?php echo img_cell($r, $SETTINGS['image_tpl'] ?? ''); ?></td><?php endif; ?>
+      <?php if (!$LAYOUT && $IMG_ON): ?><td data-label="画像"><?php echo img_cell($r, $SETTINGS['image_tpl'] ?? ''); ?></td><?php endif; ?>
       <?php if ($LAYOUT): ?>
         <?php foreach ($LAYOUT as $e): ?>
           <?php if ($e['key'] === 'image'): ?>
-      <td><?php echo img_cell($r, $SETTINGS['image_tpl'] ?? ''); ?></td>
+      <td data-label="画像"><?php echo img_cell($r, $SETTINGS['image_tpl'] ?? ''); ?></td>
           <?php elseif ($e['key'] === 'file'): ?>
-      <td class="file">
+      <td class="file" data-label="Excel名">
         <a href="?dl=<?php echo rawurlencode($r['file']); ?>"><?php echo h(basename($r['file'])); ?></a>
         <div class="loc"><?php echo (int)$r['row']; ?>行目</div>
         <details><summary>フォルダ・シート</summary>
@@ -953,23 +963,23 @@ function toggleNodes(){
         </details>
       </td>
           <?php else: list($lv, $lc) = layout_value($r, $e); ?>
-      <td<?php echo $lc !== '' ? ' class="' . $lc . '"' : ''; ?>><?php echo h($lv); ?><?php if ($e['key'] === 'name') echo age_div($r); ?></td>
+      <td data-label="<?php echo h(layout_label($e, $displayLabels)); ?>"<?php echo $lc !== '' ? ' class="' . $lc . '"' : ''; ?>><?php echo h($lv); ?><?php if ($e['key'] === 'name') echo age_div($r); ?></td>
           <?php endif; ?>
         <?php endforeach; ?>
       <?php elseif ($DISPLAY_COLS): ?>
-        <?php foreach ($DISPLAY_COLS as $col): ?><td><?php echo h(display_value($r, $col)); ?></td><?php endforeach; ?>
+        <?php foreach ($DISPLAY_COLS as $col): ?><td data-label="<?php echo h($displayLabels[$col]); ?>"><?php echo h(display_value($r, $col)); ?></td><?php endforeach; ?>
       <?php else: ?>
-        <td class="price"><?php echo h($r['fields']['price']); ?></td>
-        <td><?php echo h($r['fields']['code']); ?></td>
-        <td><?php echo h($r['fields']['name']); ?><?php echo age_div($r); ?></td>
-        <td class="hideS"><?php echo h($r['fields']['group']); ?></td>
-        <td class="num"><?php echo h(fmt_money($r['fields']['sell'])); ?></td>
-        <td class="num hideS"><?php echo h(fmt_money($r['fields']['base_price'])); ?></td>
-        <td class="num hideS"><?php echo h(fmt_money($r['fields']['cost'])); ?></td>
-        <td class="hideS"><?php echo h($r['fields']['spec']); ?></td>
+        <td class="price" data-label="プライス品番・タグ品番"><?php echo h($r['fields']['price']); ?></td>
+        <td data-label="品番コード"><?php echo h($r['fields']['code']); ?></td>
+        <td data-label="商品名"><?php echo h($r['fields']['name']); ?><?php echo age_div($r); ?></td>
+        <td class="hideS" data-label="グループ"><?php echo h($r['fields']['group']); ?></td>
+        <td class="num" data-label="推定売価"><?php echo h(fmt_money($r['fields']['sell'])); ?></td>
+        <td class="num hideS" data-label="基準価格"><?php echo h(fmt_money($r['fields']['base_price'])); ?></td>
+        <td class="num hideS" data-label="推定原価"><?php echo h(fmt_money($r['fields']['cost'])); ?></td>
+        <td class="hideS" data-label="スペック"><?php echo h($r['fields']['spec']); ?></td>
       <?php endif; ?>
       <?php if (!$LAYOUT): ?>
-      <td class="file">
+      <td class="file" data-label="Excel名">
         <a href="?dl=<?php echo rawurlencode($r['file']); ?>"><?php echo h(basename($r['file'])); ?></a>
         <div class="loc"><?php echo (int)$r['row']; ?>行目</div>
         <details><summary>フォルダ・シート</summary>

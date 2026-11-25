@@ -136,7 +136,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.18');
+define('APP_VERSION', '1.19');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -591,13 +591,15 @@ function index_signature($settings) {
 function build_index($base, $exts, $settings, $cacheFile) {
     $files = scan_files($base, $exts);
     $sig = index_signature($settings);
-    $cache = array(); $cacheSig = null;
+    $cache = array(); $cacheSig = null; $fullBuilt = 0;
     if (is_file($cacheFile)) {
         $j = json_decode((string)@file_get_contents($cacheFile), true);
-        if (is_array($j) && isset($j['files']) && is_array($j['files'])) { $cache = $j['files']; $cacheSig = isset($j['sig']) ? $j['sig'] : null; }
+        if (is_array($j) && isset($j['files']) && is_array($j['files'])) { $cache = $j['files']; $cacheSig = isset($j['sig']) ? $j['sig'] : null; $fullBuilt = isset($j['full_built']) ? (int)$j['full_built'] : 0; }
     }
-    if ($cacheSig !== $sig) $cache = array(); // シート設定が変わったら作り直し
-    $index = array(); $changed = ($cacheSig !== $sig); $errors = array();
+    $stale = (time() - $fullBuilt >= 3 * 3600); // 前回の全再構築から3時間経っていたら作り直す
+    $full = ($cacheSig !== $sig) || $stale;
+    if ($full) $cache = array(); // シート設定が変わった／3時間経過したら作り直し
+    $index = array(); $changed = $full; $errors = array();
     if (!empty($GLOBALS['SCAN_ERROR'])) $errors['（検索フォルダ）'] = $GLOBALS['SCAN_ERROR'];
     foreach ($files as $rel => $info) {
         $c = isset($cache[$rel]) ? $cache[$rel] : null;
@@ -611,8 +613,8 @@ function build_index($base, $exts, $settings, $cacheFile) {
         if (!empty($index[$rel]['error'])) $errors[$rel] = $index[$rel]['error'];
     }
     if (count($cache) !== count($index)) $changed = true;
-    if ($changed) @file_put_contents($cacheFile, json_encode(array('sig' => $sig, 'files' => $index), JSON_UNESCAPED_UNICODE), LOCK_EX);
-    return array('files' => $files, 'index' => $index, 'errors' => $errors);
+    if ($changed) @file_put_contents($cacheFile, json_encode(array('sig' => $sig, 'full_built' => $full ? time() : $fullBuilt, 'files' => $index), JSON_UNESCAPED_UNICODE), LOCK_EX);
+    return array('files' => $files, 'index' => $index, 'errors' => $errors, 'rebuilt_full' => $full);
 }
 
 /* ---------------- ダウンロード（対象フォルダ内のみ許可） ---------------- */
@@ -640,10 +642,12 @@ $results = array(); $fileNameHits = array(); $stats = null; $errors = array();
 $searched = ($q !== '');
 $baseOk = is_dir($BASE_DIR) && is_readable($BASE_DIR);
 $indexInfo = null;
+$rebuiltFull = false;
 
 if ($searched && $baseOk) {
     $built = build_index($BASE_DIR, $EXTS, $SETTINGS, $CACHE_FILE);
     $stats = array('files' => count($built['files']), 'rows' => 0);
+    $rebuiltFull = !empty($built['rebuilt_full']);
     $errors = $built['errors'];
     $qDigits = digits_only($q);
     $qKey = code_key($qDigits);
@@ -692,7 +696,7 @@ if (is_file($CACHE_FILE)) {
     $cj = json_decode((string)@file_get_contents($CACHE_FILE), true);
     if (is_array($cj) && isset($cj['files'])) {
         $n = 0; foreach ($cj['files'] as $e) $n += count($e['rows']);
-        $indexInfo = array('files' => count($cj['files']), 'rows' => $n, 'mtime' => filemtime($CACHE_FILE), 'size' => filesize($CACHE_FILE));
+        $indexInfo = array('files' => count($cj['files']), 'rows' => $n, 'mtime' => filemtime($CACHE_FILE), 'size' => filesize($CACHE_FILE), 'full_built' => isset($cj['full_built']) ? (int)$cj['full_built'] : 0);
     }
 }
 
@@ -935,7 +939,7 @@ $PERM_HTML = ob_get_clean();
 <?php if ($searched): ?>
   <?php if ($baseOk): ?>
   <div class="stats">
-    検索対象：Excel <?php echo (int)$stats['files']; ?> ファイル ／ 索引行 <?php echo (int)$stats['rows']; ?> 件
+    検索対象：Excel <?php echo (int)$stats['files']; ?> ファイル ／ 索引行 <?php echo (int)$stats['rows']; ?> 件<?php if (!empty($rebuiltFull)): ?> ／ 索引を全再構築しました（3時間ごとの自動）<?php endif; ?>
     → ヒット <b><?php echo count($results); ?></b> 件
   </div>
 
@@ -1098,7 +1102,7 @@ $PERM_HTML = ob_get_clean();
     <div class="stats">
       索引の保存先：<?php echo h($INDEX_DIR); ?>（search_index_v2.json）<br>
       <?php if ($indexInfo): ?>
-      現在の索引：Excel <?php echo (int)$indexInfo['files']; ?> ファイル ／ <?php echo (int)$indexInfo['rows']; ?> 行 ／ <?php echo number_format($indexInfo['size']); ?> バイト ／ 最終更新 <?php echo date('Y-m-d H:i', $indexInfo['mtime']); ?>
+      現在の索引：Excel <?php echo (int)$indexInfo['files']; ?> ファイル ／ <?php echo (int)$indexInfo['rows']; ?> 行 ／ <?php echo number_format($indexInfo['size']); ?> バイト ／ 最終更新 <?php echo date('Y-m-d H:i', $indexInfo['mtime']); ?> ／ 全再構築 <?php echo $indexInfo['full_built'] ? date('Y-m-d H:i', $indexInfo['full_built']) : '未実施'; ?>（3時間ごとに初回検索で自動）
       <?php else: ?>
       索引はまだ作られていません（初回検索時に自動作成されます）。
       <?php endif; ?>

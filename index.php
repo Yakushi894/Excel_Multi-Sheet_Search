@@ -70,6 +70,7 @@ function default_settings() {
         'display_cols' => '',      // 例 "F,N,C,L,O"（最大10、空欄=標準表示）
         'bg_mode'      => 'on',  // on / off / light / black
         'bg_nodes'     => 'mid', // low=44 / mid=88 / high=160
+        'layout'       => '',      // 表示レイアウトJSON（空欄=標準表示）
     );
 }
 function load_settings($file) {
@@ -95,6 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $SETTINGS['display_cols'] = trim((string)$_POST['display_cols']);
         $SETTINGS['bg_mode'] = (string)($_POST['bg_mode'] ?? 'on');
         $SETTINGS['bg_nodes'] = (string)($_POST['bg_nodes'] ?? 'mid');
+        $SETTINGS['layout'] = trim((string)($_POST['layout'] ?? ''));
         if (!in_array($SETTINGS['sheet_mode'], array('index', 'name', 'all'), true)) $SETTINGS['sheet_mode'] = 'index';
         if (!in_array($SETTINGS['bg_mode'], array('on', 'off', 'light', 'black'), true)) $SETTINGS['bg_mode'] = 'on';
         if (!in_array($SETTINGS['bg_nodes'], array('low', 'mid', 'high'), true)) $SETTINGS['bg_nodes'] = 'mid';
@@ -196,6 +198,61 @@ function parse_cols_spec($spec, $max) {
 
 list($SEARCH_COLS, $searchTrunc) = parse_cols_spec($SETTINGS['search_cols'], 0);
 list($DISPLAY_COLS, $displayTrunc) = parse_cols_spec($SETTINGS['display_cols'], 10);
+$KEY_LABELS = array('price' => 'プライス品番・タグ品番', 'code' => '品番コード', 'name' => '商品名', 'group' => 'グループ', 'sell' => '推定売価', 'base_price' => '基準価格', 'cost' => '推定原価', 'spec' => 'スペック', 'file' => 'Excel名');
+/* 表示レイアウト（JSON）: [{"key":"price","label":"..."},{"col":"N","label":"..."}] */
+function parse_layout($json) {
+    if (trim((string)$json) === '') return null;
+    $a = json_decode($json, true);
+    if (!is_array($a)) return null;
+    $out = array();
+    foreach ($a as $e) {
+        if (!is_array($e)) continue;
+        $key = isset($e['key']) ? (string)$e['key'] : '';
+        $col = isset($e['col']) ? strtoupper(trim((string)$e['col'])) : '';
+        $label = isset($e['label']) ? (string)$e['label'] : '';
+        if (in_array($key, array('price','code','name','group','sell','base_price','cost','spec','file'), true)) {
+            $out[] = array('key' => $key, 'col' => '', 'label' => $label);
+        } elseif (preg_match('/^[A-Z]{1,2}$/', $col)) {
+            $out[] = array('key' => '', 'col' => $col, 'label' => $label);
+        }
+        if (count($out) >= 15) break;
+    }
+    return $out ? $out : null;
+}
+function layout_label($e, $displayLabels) {
+    global $KEY_LABELS;
+    if ($e['label'] !== '') return $e['label'];
+    if ($e['key'] !== '') return $KEY_LABELS[$e['key']] ?? $e['key'];
+    return $displayLabels[$e['col']] ?? ($e['col'] . '列');
+}
+function layout_value($r, $e) {
+    if ($e['key'] !== '') {
+        switch ($e['key']) {
+            case 'price': return array($r['fields']['price'], 'price');
+            case 'code': return array($r['fields']['code'], '');
+            case 'name': return array($r['fields']['name'], '');
+            case 'group': return array($r['fields']['group'], 'hideS');
+            case 'sell': return array(fmt_money($r['fields']['sell']), 'num');
+            case 'base_price': return array(fmt_money($r['fields']['base_price']), 'num hideS');
+            case 'cost': return array(fmt_money($r['fields']['cost']), 'num hideS');
+            case 'spec': return array($r['fields']['spec'], 'hideS');
+        }
+    }
+    return array(display_value($r, $e['col']), '');
+}
+$LAYOUT = parse_layout($SETTINGS['layout'] ?? '');
+$LAYOUT_EXAMPLE = json_encode(array(
+    array('key' => 'price', 'label' => $KEY_LABELS['price']),
+    array('key' => 'code', 'label' => $KEY_LABELS['code']),
+    array('key' => 'name', 'label' => $KEY_LABELS['name']),
+    array('key' => 'group', 'label' => $KEY_LABELS['group']),
+    array('key' => 'sell', 'label' => $KEY_LABELS['sell']),
+    array('key' => 'base_price', 'label' => $KEY_LABELS['base_price']),
+    array('key' => 'cost', 'label' => $KEY_LABELS['cost']),
+    array('key' => 'spec', 'label' => $KEY_LABELS['spec']),
+    array('key' => 'file', 'label' => $KEY_LABELS['file'])
+), JSON_UNESCAPED_UNICODE);
+
 
 /* ---------------- xlsx 解析（ZipArchive + DOM、zip拡張が無い環境では純PHPリーダー） ---------------- */
 
@@ -781,18 +838,32 @@ function display_value($r, $col) {
   <?php if ($results): ?>
   <table>
     <tr>
-      <?php if ($DISPLAY_COLS): ?>
+      <?php if ($LAYOUT): ?>
+        <?php foreach ($LAYOUT as $e): ?><th<?php echo in_array($e['key'], array('group','base_price','cost','spec'), true) ? ' class="hideS"' : ''; ?>><?php echo h(layout_label($e, $displayLabels)); ?></th><?php endforeach; ?>
+      <?php elseif ($DISPLAY_COLS): ?>
         <?php foreach ($DISPLAY_COLS as $col): ?><th><?php echo h($displayLabels[$col]); ?><br><span class="loc"><?php echo h($col); ?>列</span></th><?php endforeach; ?>
       <?php else: ?>
         <th>プライス品番<br>タグ品番</th><th>品番コード</th><th>商品名</th>
         <th class="hideS">グループ</th><th>推定売価</th><th class="hideS">基準価格</th>
         <th class="hideS">推定原価</th><th class="hideS">スペック</th>
       <?php endif; ?>
-      <th>Excel名</th>
+      <?php if (!$LAYOUT): ?><th>Excel名</th><?php endif; ?>
     </tr>
     <?php foreach ($results as $r): ?>
     <tr>
-      <?php if ($DISPLAY_COLS): ?>
+      <?php if ($LAYOUT): ?>
+        <?php foreach ($LAYOUT as $e): ?>
+          <?php if ($e['key'] === 'file'): ?>
+      <td class="file">
+        <a href="?dl=<?php echo rawurlencode($r['file']); ?>"><?php echo h(basename($r['file'])); ?></a>
+        <div class="loc"><?php echo h(dirname($r['file']) === '.' ? '（親フォルダ）' : dirname($r['file'])); ?><br>
+        <?php echo h($r['sheet']); ?> ／ <?php echo (int)$r['row']; ?>行目</div>
+      </td>
+          <?php else: list($lv, $lc) = layout_value($r, $e); ?>
+      <td<?php echo $lc !== '' ? ' class="' . $lc . '"' : ''; ?>><?php echo h($lv); ?></td>
+          <?php endif; ?>
+        <?php endforeach; ?>
+      <?php elseif ($DISPLAY_COLS): ?>
         <?php foreach ($DISPLAY_COLS as $col): ?><td><?php echo h(display_value($r, $col)); ?></td><?php endforeach; ?>
       <?php else: ?>
         <td class="price"><?php echo h($r['fields']['price']); ?></td>
@@ -804,11 +875,13 @@ function display_value($r, $col) {
         <td class="num hideS"><?php echo h(fmt_money($r['fields']['cost'])); ?></td>
         <td class="hideS"><?php echo h($r['fields']['spec']); ?></td>
       <?php endif; ?>
+      <?php if (!$LAYOUT): ?>
       <td class="file">
         <a href="?dl=<?php echo rawurlencode($r['file']); ?>"><?php echo h(basename($r['file'])); ?></a>
         <div class="loc"><?php echo h(dirname($r['file']) === '.' ? '（親フォルダ）' : dirname($r['file'])); ?><br>
         <?php echo h($r['sheet']); ?> ／ <?php echo (int)$r['row']; ?>行目</div>
       </td>
+      <?php endif; ?>
     </tr>
     <?php endforeach; ?>
   </table>
@@ -865,6 +938,9 @@ function display_value($r, $col) {
         <label>表示列（最大10）</label>
         <input type="text" name="display_cols" value="<?php echo h($SETTINGS['display_cols']); ?>" placeholder="例: F,N,C,L,O（空欄＝標準表示）">
         <div class="note">結果表に出す列を列文字で指定します（最大10個）。見出し行がある列は見出し名で表示されます。</div>
+        <label>表示レイアウト（JSON）</label>
+        <textarea name="layout" rows="7" style="font-family:monospace;font-size:12.5px;padding:7px 9px;border:1px solid #bbb;border-radius:6px;width:100%;box-sizing:border-box"><?php echo h($SETTINGS['layout'] ?? ''); ?></textarea>
+        <div class="note">結果表の列順と表示名をJSONで指定します（表示列より優先、最大15列）。key は price / code / name / group / sell / base_price / cost / spec / file、または {"col":"N","label":"好きな名前"} でシートの列を直接指定できます。空欄＝標準表示。<br>標準レイアウト：<code><?php echo h($LAYOUT_EXAMPLE); ?></code></div>
         <label>背景アニメーション</label>
         <select name="bg_mode">
           <option value="on"<?php echo $BG_MODE === 'on' ? ' selected' : ''; ?>>ON（標準の配色）</option>

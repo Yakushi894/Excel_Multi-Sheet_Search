@@ -124,7 +124,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.13');
+define('APP_VERSION', '1.14');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -281,7 +281,7 @@ function img_cell($r, $tpl) {
     $u = image_url($r, $tpl);
     if ($u === '') return '';
     $u = h($u);
-    return '<a href="' . $u . '" target="_blank" rel="noopener"><img src="' . $u . '" alt="" loading="lazy" style="max-width:72px;max-height:72px;border-radius:6px" onerror="imgMissing(this)"></a>';
+    return '<img src="' . $u . '" alt="" loading="lazy" style="max-width:72px;max-height:72px;border-radius:6px;cursor:zoom-in" onclick="openImgPopup(this.src)" onerror="imgMissing(this)">';
 }
 $IMG_ON = trim((string)($SETTINGS['image_tpl'] ?? '')) !== '';
 $AGE_ON = ($SETTINGS['show_age'] ?? '0') === '1';
@@ -918,7 +918,6 @@ bgStart();
   <?php if ($results): ?>
   <table class="rlist">
     <tr class="rhead">
-      <?php if (!$LAYOUT && $IMG_ON): ?><th>画像</th><?php endif; ?>
       <?php if ($LAYOUT): ?>
         <?php foreach ($LAYOUT as $e): ?><th<?php echo in_array($e['key'], array('group','base_price','cost','spec'), true) ? ' class="hideS"' : ''; ?>><?php echo h(layout_label($e, $displayLabels)); ?></th><?php endforeach; ?>
       <?php elseif ($DISPLAY_COLS): ?>
@@ -929,10 +928,10 @@ bgStart();
         <th class="hideS">推定原価</th><th class="hideS">スペック</th>
       <?php endif; ?>
       <?php if (!$LAYOUT): ?><th>Excel名</th><?php endif; ?>
+      <?php if (!$LAYOUT && $IMG_ON): ?><th>画像</th><?php endif; ?>
     </tr>
     <?php foreach ($results as $r): ?>
     <tr>
-      <?php if (!$LAYOUT && $IMG_ON): ?><td data-label="画像"><?php echo img_cell($r, $SETTINGS['image_tpl'] ?? ''); ?></td><?php endif; ?>
       <?php if ($LAYOUT): ?>
         <?php foreach ($LAYOUT as $e): ?>
           <?php if ($e['key'] === 'image'): ?>
@@ -972,6 +971,7 @@ bgStart();
         </details>
       </td>
       <?php endif; ?>
+      <?php if (!$LAYOUT && $IMG_ON): ?><td data-label="画像"><?php echo img_cell($r, $SETTINGS['image_tpl'] ?? ''); ?></td><?php endif; ?>
     </tr>
     <?php endforeach; ?>
   </table>
@@ -1174,6 +1174,16 @@ function resetLayout(){
 <script>
 function openAbout(){ document.getElementById('aboutModal').style.display = 'block'; }
 function closeAbout(){ document.getElementById('aboutModal').style.display = 'none'; }
+</script>
+<div class="modal-bg" id="imgModal" onclick="if(event.target.id!=='imgPopupImg')closeImgPopup()">
+  <div style="text-align:center;padding:4vh 10px">
+    <img id="imgPopupImg" src="" alt="" style="max-width:96vw;max-height:86vh;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.4)">
+    <div style="margin-top:10px"><button type="button" class="edbtn" onclick="closeImgPopup()">閉じる</button></div>
+  </div>
+</div>
+<script>
+function openImgPopup(src){ document.getElementById('imgPopupImg').src = src; document.getElementById('imgModal').style.display = 'block'; }
+function closeImgPopup(){ document.getElementById('imgModal').style.display = 'none'; document.getElementById('imgPopupImg').src = ''; }
 </script>
 </body>
 </html>

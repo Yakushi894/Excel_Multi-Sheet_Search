@@ -80,7 +80,7 @@ function load_settings($file) {
     $s = default_settings();
     if (is_file($file)) {
         $j = json_decode((string)@file_get_contents($file), true);
-        if (is_array($j)) foreach ($s as $k => $v) if (isset($j[$k])) $s[$k] = $j[$k];
+        if (is_array($j)) $s = array_merge($s, $j); // 未知のキーも保持する（版を跨いでも設定が消えないように）
     }
     $s['sheet_index'] = max(1, (int)$s['sheet_index']);
     if (!in_array($s['sheet_mode'], array('index', 'name', 'all'), true)) $s['sheet_mode'] = 'index';
@@ -106,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (!in_array($SETTINGS['sheet_mode'], array('index', 'name', 'all'), true)) $SETTINGS['sheet_mode'] = 'index';
         if (!in_array($SETTINGS['bg_mode'], array('on', 'off', 'light', 'black'), true)) $SETTINGS['bg_mode'] = 'on';
         if (!in_array($SETTINGS['bg_nodes'], array('low', 'mid', 'high'), true)) $SETTINGS['bg_nodes'] = 'mid';
+        if (is_file($SETTINGS_FILE)) @copy($SETTINGS_FILE, $SETTINGS_FILE . '.bak');
         @file_put_contents($SETTINGS_FILE, json_encode($SETTINGS, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
     } elseif ($_POST['action'] === 'rebuild') {
         @unlink($CACHE_FILE);
@@ -124,7 +125,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.14');
+define('APP_VERSION', '1.15');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */

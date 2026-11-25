@@ -73,6 +73,7 @@ function default_settings() {
         'layout'       => '',      // 表示レイアウトJSON（空欄=標準表示）
         'image_tpl'    => '',      // 画像URLテンプレート（空欄=画像なし）
         'show_age'     => '0',     // ファイルの時期表示 1=する 0=しない
+        'nodes_show'   => '1',     // ノード表示 1=する 0=完全に非表示
     );
 }
 function load_settings($file) {
@@ -101,6 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $SETTINGS['layout'] = trim((string)($_POST['layout'] ?? ''));
         $SETTINGS['image_tpl'] = trim((string)($_POST['image_tpl'] ?? ''));
         $SETTINGS['show_age'] = (($_POST['show_age'] ?? '0') === '1') ? '1' : '0';
+        $SETTINGS['nodes_show'] = (($_POST['nodes_show'] ?? '1') === '0') ? '0' : '1';
         if (!in_array($SETTINGS['sheet_mode'], array('index', 'name', 'all'), true)) $SETTINGS['sheet_mode'] = 'index';
         if (!in_array($SETTINGS['bg_mode'], array('on', 'off', 'light', 'black'), true)) $SETTINGS['bg_mode'] = 'on';
         if (!in_array($SETTINGS['bg_nodes'], array('low', 'mid', 'high'), true)) $SETTINGS['bg_nodes'] = 'mid';
@@ -122,7 +124,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.10');
+define('APP_VERSION', '1.11');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -283,6 +285,7 @@ function img_cell($r, $tpl) {
 }
 $IMG_ON = trim((string)($SETTINGS['image_tpl'] ?? '')) !== '';
 $AGE_ON = ($SETTINGS['show_age'] ?? '0') === '1';
+$NODES_SHOW = ($SETTINGS['nodes_show'] ?? '1') === '1';
 $LAYOUT = parse_layout($SETTINGS['layout'] ?? '');
 $LAYOUT_EXAMPLE = json_encode(array(
     array('key' => 'price', 'label' => $KEY_LABELS['price']),
@@ -401,19 +404,19 @@ function parse_xlsx($path, $settings) {
     // 設定に従って対象シートを選ぶ
     $use = array();
     if ($settings['sheet_mode'] === 'all') {
-        $use = $sheets;
+        foreach ($sheets as $i => $s) $use[] = array($s[0], $s[1], $i + 1);
     } elseif ($settings['sheet_mode'] === 'name') {
-        foreach ($sheets as $s) if ($settings['sheet_name'] !== '' && strpos($s[0], $settings['sheet_name']) !== false) $use[] = $s;
+        foreach ($sheets as $i => $s) if ($settings['sheet_name'] !== '' && strpos($s[0], $settings['sheet_name']) !== false) $use[] = array($s[0], $s[1], $i + 1);
         if (!$use) { $zip->close(); return array('rows' => array(), 'error' => '指定名のシートがありません（名前の一部: ' . $settings['sheet_name'] . '）'); }
     } else { // index: 何枚目（初期値1枚目）
         $idx = $settings['sheet_index'] - 1;
-        if (isset($sheets[$idx])) $use[] = $sheets[$idx];
+        if (isset($sheets[$idx])) $use[] = array($sheets[$idx][0], $sheets[$idx][1], $idx + 1);
         if (!$use) { $zip->close(); return array('rows' => array(), 'error' => 'シートが ' . $settings['sheet_index'] . ' 枚ありません'); }
     }
 
     $rows = array();
     foreach ($use as $sheet) {
-        list($sheetName, $sheetPath) = $sheet;
+        list($sheetName, $sheetPath, $sheetNo) = $sheet;
         $doc = load_dom($zip->getFromName($sheetPath));
         if (!$doc) continue;
 
@@ -516,6 +519,7 @@ function parse_xlsx($path, $settings) {
 
             $rows[] = array(
                 'sheet' => $sheetName,
+                'sno' => $sheetNo,
                 'row' => $rowNo,
                 'cells' => $nonEmpty,
                 'headers' => $headers,
@@ -569,7 +573,7 @@ function scan_files($base, $exts) {
 }
 
 function index_signature($settings) {
-    return md5(json_encode(array($settings['base_dir'], $settings['sheet_mode'], $settings['sheet_index'], $settings['sheet_name'])));
+    return md5(json_encode(array($settings['base_dir'], $settings['sheet_mode'], $settings['sheet_index'], $settings['sheet_name'], 'fmt3')));
 }
 
 function build_index($base, $exts, $settings, $cacheFile) {
@@ -767,6 +771,8 @@ function display_value($r, $col) {
   .edbtn{padding:7px 13px;border:0;border-radius:7px;background:#666;color:#fff;cursor:pointer;font-size:13.5px}
   .edbtn.mv{padding:5px 9px}
   body.dark a{color:#f0a35e}
+  .file details{margin-top:1px}
+  .file summary{cursor:pointer;color:#888;font-size:12px}
 </style>
 <script>
 function imgMissing(img){
@@ -778,7 +784,7 @@ function imgMissing(img){
 </script>
 </head>
 <body<?php echo $BG_MODE === 'black' ? ' class="dark"' : ''; ?>>
-<?php if ($BG_MODE !== 'off'): ?>
+<?php if ($BG_MODE !== 'off' && $NODES_SHOW): ?>
 <canvas id="bgcanvas"></canvas>
 <script>
 var BG_MODE = '<?php echo $BG_MODE; ?>', BG_N = <?php echo (int)$BG_COUNT; ?>;
@@ -906,7 +912,7 @@ function toggleNodes(){
     <button type="submit">検索</button>
   </form>
   <div class="hint">入力例：品番コード <b>12345678</b>（8桁・完全一致）／ 途中までの数字でも部分一致 ／ <b>999-0001</b> プライス品番からも可 ／ 商品名でも可 ／ セル内に「12345678+12345679」と複数入っている場合も個別にヒットします</div>
-  <?php if ($BG_MODE !== 'off'): ?><div style="text-align:right;margin-top:6px"><button type="button" class="edbtn" id="bgToggleBtn" onclick="toggleNodes()">ノードを非表示</button></div><?php endif; ?>
+  <?php if ($BG_MODE !== 'off' && $NODES_SHOW): ?><div style="text-align:right;margin-top:6px"><button type="button" class="edbtn" id="bgToggleBtn" onclick="toggleNodes()">ノードを非表示</button></div><?php endif; ?>
 
 <?php if ($searched): ?>
   <?php if ($baseOk): ?>
@@ -940,8 +946,11 @@ function toggleNodes(){
           <?php elseif ($e['key'] === 'file'): ?>
       <td class="file">
         <a href="?dl=<?php echo rawurlencode($r['file']); ?>"><?php echo h(basename($r['file'])); ?></a>
+        <div class="loc"><?php echo (int)$r['row']; ?>行目</div>
+        <details><summary>フォルダ・シート</summary>
         <div class="loc"><?php echo h(dirname($r['file']) === '.' ? '（親フォルダ）' : dirname($r['file'])); ?><br>
-        <?php echo h($r['sheet']); ?> ／ <?php echo (int)$r['row']; ?>行目</div>
+        <?php echo !empty($r['sno']) ? 'シート' . (int)$r['sno'] . '枚目' : h($r['sheet']); ?></div>
+        </details>
       </td>
           <?php else: list($lv, $lc) = layout_value($r, $e); ?>
       <td<?php echo $lc !== '' ? ' class="' . $lc . '"' : ''; ?>><?php echo h($lv); ?><?php if ($e['key'] === 'name') echo age_div($r); ?></td>
@@ -962,8 +971,11 @@ function toggleNodes(){
       <?php if (!$LAYOUT): ?>
       <td class="file">
         <a href="?dl=<?php echo rawurlencode($r['file']); ?>"><?php echo h(basename($r['file'])); ?></a>
+        <div class="loc"><?php echo (int)$r['row']; ?>行目</div>
+        <details><summary>フォルダ・シート</summary>
         <div class="loc"><?php echo h(dirname($r['file']) === '.' ? '（親フォルダ）' : dirname($r['file'])); ?><br>
-        <?php echo h($r['sheet']); ?> ／ <?php echo (int)$r['row']; ?>行目</div>
+        <?php echo !empty($r['sno']) ? 'シート' . (int)$r['sno'] . '枚目' : h($r['sheet']); ?></div>
+        </details>
       </td>
       <?php endif; ?>
     </tr>
@@ -1048,6 +1060,12 @@ function toggleNodes(){
           <option value="mid"<?php echo $BG_NODES === 'mid' ? ' selected' : ''; ?>>中（88）</option>
           <option value="high"<?php echo $BG_NODES === 'high' ? ' selected' : ''; ?>>多い（160）</option>
         </select>
+        <label>ノード表示</label>
+        <select name="nodes_show">
+          <option value="1"<?php echo ($SETTINGS['nodes_show'] ?? '1') === '1' ? ' selected' : ''; ?>>表示する</option>
+          <option value="0"<?php echo ($SETTINGS['nodes_show'] ?? '1') === '0' ? ' selected' : ''; ?>>完全に非表示</option>
+        </select>
+        <div class="note">完全に非表示にすると、背景アニメーション自体を描画しません（全ブラウザ共通の設定）。検索欄下のボタンは、そのブラウザだけの一時的な切替です。</div>
       </div>
       <div class="sbtn">
         <button type="submit">設定を保存</button>

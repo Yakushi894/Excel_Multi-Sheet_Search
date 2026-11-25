@@ -136,7 +136,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.16');
+define('APP_VERSION', '1.17');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -906,6 +906,9 @@ bgStart();
   if ($envPgid !== false && $envPgid !== '' && (string)$runGid !== (string)$envPgid) {
       echo '<span class="muted">※ PGID は指定されていますが実行GIDに反映されていません。イメージ v1.3 以降で解消します。</span><br>';
   }
+  if (is_dir('/Index') && !is_writable('/Index')) {
+      echo '<span class="muted">※ /Index に書けません。フォルダの所有者が「33」（www-data）と表示されるのは正常です（NASに存在しない番号のUIDでも動作します）。原因は所有者ではなく、フォルダのACLに書き込み許可のエントリが無いことです。File Station で Index フォルダの「権限」タブを開き、everyone に読み取り＋書き込みを許可してください（適用先：このフォルダ、子フォルダ、ファイル）。</span><br>';
+  }
   if ($workReadable === false && (string)$runUid === (string)@fileowner($BASE_DIR)) {
       echo '<span class="muted">※ UIDは所有者と一致しているのに読めません。Synology の ACL 管理フォルダ（権限表示 0000）の可能性があります。その場合は File Station の権限で「everyone」に読み取りを付けるのが確実です。</span><br>';
   }
@@ -917,7 +920,7 @@ bgStart();
   <?php if ($displayTrunc): ?><div class="warn">表示列は最大10個までです。先頭の10個を適用しています。</div><?php endif; ?>
 
   <?php if ($IDX_WARN): ?>
-  <div class="warn" style="border-color:#e0245e;color:#b3003b;background:#fff0f3">警告：索引と設定の保存先が /Index になっていません（現在：<?php echo h($INDEX_DIR); ?>）。このままだとコンテナの更新・リセットで設定と索引が消えます。/Index フォルダへの書き込み権限（File Station で権限付与）か、ボリューム割り当てを確認してください。詳細は下部の「権限チェック」を見てください。</div>
+  <div class="warn" style="border-color:#e0245e;color:#b3003b;background:#fff0f3">警告：索引と設定の保存先が /Index になっていません（現在：<?php echo h($INDEX_DIR); ?>）。このままだとコンテナの更新・リセットで設定と索引が消えます。/Index フォルダへの書き込み権限（File Station で権限付与）か、ボリューム割り当てを確認してください。詳細は上部の「権限チェック」を見てください。</div>
   <?php endif; ?>
   <form class="search" method="get" action="">
     <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="品番コード（8桁）例: 12345678" inputmode="numeric" autofocus>

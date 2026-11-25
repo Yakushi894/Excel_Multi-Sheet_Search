@@ -55,6 +55,17 @@ function bootstrap_index_dir() {
 $INDEX_DIR = bootstrap_index_dir();
 $SETTINGS_FILE = $INDEX_DIR . '/settings.json';
 $CACHE_FILE = $INDEX_DIR . '/search_index_v2.json';
+$INDEX_MOUNTED = false;
+$mountsTxt = @file_get_contents('/proc/mounts');
+if ($mountsTxt) $INDEX_MOUNTED = (bool)preg_match('/\s\/Index\s/', $mountsTxt);
+$INDEX_FALLBACK = ($INDEX_DIR !== '/Index');
+$IDX_WARN = is_dir('/Index') && ($INDEX_FALLBACK || !$INDEX_MOUNTED);
+// 以前コンテナ内に保存されていた設定・索引があれば /Index へ自動移行する
+if ($INDEX_DIR === '/Index' && __DIR__ !== '/Index') {
+    foreach (array('settings.json', 'search_index_v2.json') as $fn) {
+        if (!is_file($INDEX_DIR . '/' . $fn) && is_file(__DIR__ . '/' . $fn)) @copy(__DIR__ . '/' . $fn, $INDEX_DIR . '/' . $fn);
+    }
+}
 
 /* ---------------- 設定 ---------------- */
 
@@ -125,7 +136,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.15');
+define('APP_VERSION', '1.16');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -849,9 +860,9 @@ bgStart();
   <h1>Excel横断検索（Excel_Multi-Sheet_Search）</h1>
   <div class="sub">品番コードから「プライス品番・タグ品番（999-XXXX）」を探します。対象フォルダ＋子フォルダ内の全Excelが対象です（日本語フォルダ・日本語ファイル名対応）。</div>
 
-  <?php if (!$baseOk): ?>
-  <div class="warn"><b>検索フォルダが見つからないか、読み取り権限がありません：</b><?php echo h($BASE_DIR); ?><br>
-  Docker のボリューム指定（例：<code>/Work</code>）か、下の設定の「検索フォルダ」を確認してください。<br>
+  <?php if (!$baseOk || $IDX_WARN): ?>
+  <div class="warn"><?php if (!$baseOk): ?><b>検索フォルダが見つからないか、読み取り権限がありません：</b><?php echo h($BASE_DIR); ?><br>
+  Docker のボリューム指定（例：<code>/Work</code>）か、下の設定の「検索フォルダ」を確認してください。<br><?php else: ?><b>索引フォルダ（/Index）に書き込めないか、ボリュームが割り当たっていません。</b>設定と索引がコンテナ内に保存されるため、更新・リセットで消えます。<br><?php endif; ?>
   <?php
   $diag = array();
   $diag[] = 'フォルダ存在: ' . (is_dir($BASE_DIR) ? 'あり' : 'なし');
@@ -886,6 +897,8 @@ bgStart();
   echo '<li>実行ユーザー: ' . h($runName) . '（UID: ' . h((string)$runUid) . ' / GID: ' . h((string)$runGid) . '）</li>';
   echo '<li>検索フォルダ ' . h($BASE_DIR) . ' の読み取り: ' . $okNg($workReadable) . ($workReadable ? '（中身 ' . count($workList) . ' 件）' : '') . '</li>';
   echo '<li>索引フォルダ ' . h($INDEX_DIR) . ' の書き込み: ' . $okNg($idxWritable) . h($idxNote) . '</li>';
+  echo '<li>/Index マウント: ' . ($INDEX_MOUNTED ? 'あり' : '<b style="color:#c62828">なし（ボリューム未割り当ての可能性）</b>') . '</li>';
+  echo '<li>/Index 書込可否: ' . (is_dir('/Index') ? (is_writable('/Index') ? 'OK' : '<b style="color:#c62828">NG（書けません）</b>') : 'フォルダなし') . '</li>';
   echo '</ul>';
   if ($envPuid !== false && $envPuid !== '' && (string)$runUid !== (string)$envPuid) {
       echo '<span class="muted">※ PUID は指定されていますが実行UIDに反映されていません。コンテナが再作成されていないか、古いイメージの可能性があります（イメージの更新＋作り直しをしてください）。</span><br>';
@@ -903,6 +916,9 @@ bgStart();
   <?php if (isset($_GET['saved'])): ?><div class="stats">設定を保存しました（索引は次回検索時に自動で作り直されます）。</div><?php endif; ?>
   <?php if ($displayTrunc): ?><div class="warn">表示列は最大10個までです。先頭の10個を適用しています。</div><?php endif; ?>
 
+  <?php if ($IDX_WARN): ?>
+  <div class="warn" style="border-color:#e0245e;color:#b3003b;background:#fff0f3">警告：索引と設定の保存先が /Index になっていません（現在：<?php echo h($INDEX_DIR); ?>）。このままだとコンテナの更新・リセットで設定と索引が消えます。/Index フォルダへの書き込み権限（File Station で権限付与）か、ボリューム割り当てを確認してください。詳細は下部の「権限チェック」を見てください。</div>
+  <?php endif; ?>
   <form class="search" method="get" action="">
     <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="品番コード（8桁）例: 12345678" inputmode="numeric" autofocus>
     <button type="submit">検索</button>

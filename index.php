@@ -118,6 +118,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
+define('APP_VERSION', '1.8');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -723,6 +724,7 @@ function display_value($r, $col) {
   .lrow select,.lrow input{padding:6px 8px;border:1px solid #bbb;border-radius:6px;font-size:13.5px}
   .edbtn{padding:7px 13px;border:0;border-radius:7px;background:#666;color:#fff;cursor:pointer;font-size:13.5px}
   .edbtn.mv{padding:5px 9px}
+  body.dark a{color:#f0a35e}
 </style>
 </head>
 <body<?php echo $BG_MODE === 'black' ? ' class="dark"' : ''; ?>>
@@ -990,6 +992,9 @@ function display_value($r, $col) {
       <?php endif; ?>
     </div>
   </details>
+  <div style="text-align:right;color:#777;font-size:12.5px;margin-top:10px">
+    Excel Multi-Sheet Search v<?php echo APP_VERSION; ?> ｜ <a href="#" onclick="openAbout();return false;">About</a>
+  </div>
 </div>
 <div class="modal-bg" id="layoutModal">
   <div class="modal">
@@ -1056,6 +1061,31 @@ function resetLayout(){
   document.querySelector('textarea[name=layout]').value = '';
   document.getElementById('settingsForm').submit();
 }
+</script>
+<div class="modal-bg" id="aboutModal">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b>Excel Multi-Sheet Search</b>
+      <button type="button" class="edbtn" onclick="closeAbout()">閉じる</button>
+    </div>
+    <p style="margin:10px 0">バージョン v<?php echo APP_VERSION; ?></p>
+    <p>フォルダ内の Excel ファイル（.xlsx / .xlsm）を横断検索する Web ツールです。品番コードを入力すると、該当する行のプライス品番・商品名・価格などを一覧で表示します。</p>
+    <ul style="margin:8px 0;padding-left:20px;line-height:1.7">
+      <li>サブフォルダを含めて再帰検索（日本語フォルダ・ファイル名対応）</li>
+      <li>索引（インデックス）方式で、2回目以降の検索が高速</li>
+      <li>読み込むシート・検索列・表示列・表示レイアウト（列順と表示名）を設定可能</li>
+      <li>Docker イメージで配布（Synology NAS / Linux で動作）</li>
+    </ul>
+    <p style="line-height:1.8">
+      GitHub：<a href="https://github.com/Yakushi894/Excel_Multi-Sheet_Search" target="_blank" rel="noopener">Yakushi894/Excel_Multi-Sheet_Search</a><br>
+      Docker Hub：<a href="https://hub.docker.com/r/yuichi894/excel-multi-sheet-search" target="_blank" rel="noopener">yuichi894/excel-multi-sheet-search</a>
+    </p>
+    <p style="color:#777;font-size:12.5px">License: MIT © Yakushi894</p>
+  </div>
+</div>
+<script>
+function openAbout(){ document.getElementById('aboutModal').style.display = 'block'; }
+function closeAbout(){ document.getElementById('aboutModal').style.display = 'none'; }
 </script>
 </body>
 </html>

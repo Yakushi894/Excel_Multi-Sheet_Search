@@ -136,7 +136,7 @@ $BG_COUNT = array('low' => 44, 'mid' => 88, 'high' => 160)[$BG_NODES];
 
 /* ---------------- 小物関数 ---------------- */
 
-define('APP_VERSION', '1.17');
+define('APP_VERSION', '1.18');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 /** 全角数字→半角（区切り文字は残す） */
@@ -856,26 +856,9 @@ function bgStart(){
 bgStart();
 </script>
 <?php endif; ?>
-<div class="wrap">
-  <h1>Excel横断検索（Excel_Multi-Sheet_Search）</h1>
-  <div class="sub">品番コードから「プライス品番・タグ品番（999-XXXX）」を探します。対象フォルダ＋子フォルダ内の全Excelが対象です（日本語フォルダ・日本語ファイル名対応）。</div>
-
-  <?php if (!$baseOk || $IDX_WARN): ?>
-  <div class="warn"><?php if (!$baseOk): ?><b>検索フォルダが見つからないか、読み取り権限がありません：</b><?php echo h($BASE_DIR); ?><br>
-  Docker のボリューム指定（例：<code>/Work</code>）か、下の設定の「検索フォルダ」を確認してください。<br><?php else: ?><b>索引フォルダ（/Index）に書き込めないか、ボリュームが割り当たっていません。</b>設定と索引がコンテナ内に保存されるため、更新・リセットで消えます。<br><?php endif; ?>
-  <?php
-  $diag = array();
-  $diag[] = 'フォルダ存在: ' . (is_dir($BASE_DIR) ? 'あり' : 'なし');
-  if (is_dir($BASE_DIR)) {
-      $diag[] = '権限: ' . substr(sprintf('%o', @fileperms($BASE_DIR)), -4);
-      $diag[] = '所有者UID: ' . @fileowner($BASE_DIR);
-  }
-  if (function_exists('posix_geteuid')) $diag[] = '実行中UID: ' . posix_geteuid();
-  echo '<span class="muted">診断: ' . h(implode(' / ', $diag)) . '</span><br>';
-  ?>
-  <span class="muted">フォルダの所有者と実行中UIDが違う場合は、コンテナの環境変数 PUID / PGID に所有者のUID/GID（例：1026 / 100）を指定すると読めるようになります。</span><br>
-  <span class="muted">※ Synology 等の ACL 管理フォルダでは、対象フォルダ自体に閲覧権限を付ける方が確実です。File Station の権限設定で「everyone」に読み取り（一覧表示／データの読取り＋フォルダ間の移動／実行ファイル＋属性の読み取り）を付けてください。</span>
-  <?php
+<?php
+// ===== 権限チェック（警告内とポップアップで共用するため、HTMLを先に組み立てる） =====
+ob_start();
   // ===== 権限チェック（実際に読めるか・書けるかをその場でテストする） =====
   $envPuid = getenv('PUID'); $envPgid = getenv('PGID');
   $runName = '?'; $runUid = '?'; $runGid = '?';
@@ -913,7 +896,28 @@ bgStart();
       echo '<span class="muted">※ UIDは所有者と一致しているのに読めません。Synology の ACL 管理フォルダ（権限表示 0000）の可能性があります。その場合は File Station の権限で「everyone」に読み取りを付けるのが確実です。</span><br>';
   }
   echo '</div>';
+$PERM_HTML = ob_get_clean();
+?>
+<div class="wrap">
+  <h1>Excel横断検索（Excel_Multi-Sheet_Search）</h1>
+  <div class="sub">品番コードから「プライス品番・タグ品番（999-XXXX）」を探します。対象フォルダ＋子フォルダ内の全Excelが対象です（日本語フォルダ・日本語ファイル名対応）。</div>
+
+  <?php if (!$baseOk || $IDX_WARN): ?>
+  <div class="warn"><?php if (!$baseOk): ?><b>検索フォルダが見つからないか、読み取り権限がありません：</b><?php echo h($BASE_DIR); ?><br>
+  Docker のボリューム指定（例：<code>/Work</code>）か、下の設定の「検索フォルダ」を確認してください。<br><?php else: ?><b>索引フォルダ（/Index）に書き込めないか、ボリュームが割り当たっていません。</b>設定と索引がコンテナ内に保存されるため、更新・リセットで消えます。<br><?php endif; ?>
+  <?php
+  $diag = array();
+  $diag[] = 'フォルダ存在: ' . (is_dir($BASE_DIR) ? 'あり' : 'なし');
+  if (is_dir($BASE_DIR)) {
+      $diag[] = '権限: ' . substr(sprintf('%o', @fileperms($BASE_DIR)), -4);
+      $diag[] = '所有者UID: ' . @fileowner($BASE_DIR);
+  }
+  if (function_exists('posix_geteuid')) $diag[] = '実行中UID: ' . posix_geteuid();
+  echo '<span class="muted">診断: ' . h(implode(' / ', $diag)) . '</span><br>';
   ?>
+  <span class="muted">フォルダの所有者と実行中UIDが違う場合は、コンテナの環境変数 PUID / PGID に所有者のUID/GID（例：1026 / 100）を指定すると読めるようになります。</span><br>
+  <span class="muted">※ Synology 等の ACL 管理フォルダでは、対象フォルダ自体に閲覧権限を付ける方が確実です。File Station の権限設定で「everyone」に読み取り（一覧表示／データの読取り＋フォルダ間の移動／実行ファイル＋属性の読み取り）を付けてください。</span>
+  <?php echo $PERM_HTML; ?>
   </div>
   <?php endif; ?>
   <?php if (isset($_GET['saved'])): ?><div class="stats">設定を保存しました（索引は次回検索時に自動で作り直されます）。</div><?php endif; ?>
@@ -1099,6 +1103,10 @@ bgStart();
       索引はまだ作られていません（初回検索時に自動作成されます）。
       <?php endif; ?>
     </div>
+    <div class="sbtn">
+      <button type="button" class="sub2" onclick="openPerm()">権限チェック</button>
+      <span class="note">フォルダの読み書き可否や /Index のマウント・書込状態をポップアップで確認できます。</span>
+    </div>
   </details>
   <div style="text-align:right;color:#777;font-size:12.5px;margin-top:10px">
     Excel Multi-Sheet Search v<?php echo APP_VERSION; ?> ｜ <a href="#" onclick="openAbout();return false;">About</a>
@@ -1195,6 +1203,12 @@ function resetLayout(){
 function openAbout(){ document.getElementById('aboutModal').style.display = 'block'; }
 function closeAbout(){ document.getElementById('aboutModal').style.display = 'none'; }
 </script>
+<div class="modal-bg" id="permModal" onclick="if(event.target===this)closePerm()">
+  <div class="modal">
+    <?php echo $PERM_HTML; ?>
+    <div style="margin-top:12px;text-align:right"><button type="button" class="edbtn" onclick="closePerm()">閉じる</button></div>
+  </div>
+</div>
 <div class="modal-bg" id="imgModal" onclick="if(event.target.id!=='imgPopupImg')closeImgPopup()">
   <div style="text-align:center;padding:4vh 10px">
     <img id="imgPopupImg" src="" alt="" style="max-width:96vw;max-height:86vh;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.4)">
@@ -1202,6 +1216,8 @@ function closeAbout(){ document.getElementById('aboutModal').style.display = 'no
   </div>
 </div>
 <script>
+function openPerm(){ document.getElementById('permModal').style.display = 'block'; }
+function closePerm(){ document.getElementById('permModal').style.display = 'none'; }
 function openImgPopup(src){ document.getElementById('imgPopupImg').src = src; document.getElementById('imgModal').style.display = 'block'; }
 function closeImgPopup(){ document.getElementById('imgModal').style.display = 'none'; document.getElementById('imgPopupImg').src = ''; }
 </script>
